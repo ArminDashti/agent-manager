@@ -1,0 +1,25 @@
+{
+  "window": { "maximized": true },
+  "dataPath": "./data",
+  "platforms": [],
+  "projectRoots": [],
+  "repoBank": {
+    "url": "",
+    "localClonePath": "./data/repo-bank",
+    "lastFetchAt": null,
+    "lastPushAt": null
+  },
+  "hub": {
+    "baseUrl": "https://armindashti.github.com/agent-manager-hub",
+    "catalogUrl": "https://armindashti.github.com/agent-manager-hub/hub/manifest.json",
+    "lastFetchAt": null
+  },
+  "assignments": {
+    "skills": {},
+    "rules": {},
+    "mcps": {},
+    "hooks": {},
+    "subAgents": {},
+    "tools": {}
+  }
+}

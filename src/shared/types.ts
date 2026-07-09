@@ -1,0 +1,210 @@
+export type PlatformId = 'cursor' | 'cline' | 'kilo' | 'antigravity' | 'devin' | 'kiro'
+
+export type ResourceType =
+  | 'skill'
+  | 'rule'
+  | 'mcp'
+  | 'hook'
+  | 'subAgent'
+  | 'tool'
+
+export type HubResourceType = 'skill' | 'rule' | 'mcp' | 'hook' | 'tool'
+
+export interface ResourceSource {
+  type: 'platform' | 'project' | 'hub' | 'local'
+  id: string
+  label: string
+}
+
+export interface PlatformConfig {
+  id: PlatformId
+  enabled: boolean
+  rootPath: string
+}
+
+export interface ProjectInfo {
+  id: string
+  name: string
+  path: string
+  rootId: string
+}
+
+export interface ProjectRootConfig {
+  id: string
+  scanPath: string
+  projects: ProjectInfo[]
+}
+
+export interface AppSettings {
+  window: { maximized: boolean }
+  dataPath: string
+  platforms: PlatformConfig[]
+  projectRoots: ProjectRootConfig[]
+  repoBank: {
+    url: string
+    localClonePath: string
+    lastFetchAt: string | null
+    lastPushAt: string | null
+  }
+  hub: {
+    baseUrl: string
+    catalogUrl: string
+    lastFetchAt: string | null
+  }
+  assignments: {
+    skills: Record<string, string[]>
+    rules: Record<string, string[]>
+    mcps: Record<string, string[]>
+    hooks: Record<string, string[]>
+    subAgents: Record<string, string[]>
+    tools: Record<string, string[]>
+  }
+}
+
+export interface SkillResource {
+  id: string
+  name: string
+  rootPath: string
+  skillMdPath: string
+  files: string[]
+  source: ResourceSource
+  enabled: boolean
+}
+
+export interface RuleResource {
+  id: string
+  name: string
+  filePath: string
+  source: ResourceSource
+  enabled: boolean
+}
+
+export interface McpTool {
+  name: string
+  description?: string
+}
+
+export interface McpResource {
+  id: string
+  name: string
+  owner?: string
+  params: Record<string, unknown>
+  tools: McpTool[]
+  status: 'connected' | 'disconnected' | 'unknown' | 'error'
+  platforms: string[]
+  configPath: string
+}
+
+export interface HookDefinition {
+  command?: string
+  type?: 'command' | 'prompt'
+  matcher?: string
+  timeout?: number
+  failClosed?: boolean
+  loop_limit?: number
+}
+
+export interface HookResource {
+  id: string
+  event: string
+  name: string
+  configPath: string
+  definition: HookDefinition
+  scriptPath?: string
+  scriptFiles: string[]
+  source: ResourceSource
+  enabled: boolean
+}
+
+export interface SubAgentResource {
+  id: string
+  name: string
+  description: string
+  filePath: string
+  frontmatter: Record<string, unknown>
+  source: ResourceSource
+  enabled: boolean
+}
+
+export interface ToolResource {
+  id: string
+  name: string
+  description?: string
+  rootPath: string
+  entrypoint?: string
+  files: string[]
+  source: ResourceSource
+  enabled: boolean
+}
+
+export interface HubCatalogItem {
+  id: string
+  type: HubResourceType
+  name: string
+  description?: string
+  tags?: string[]
+  fetchUrl: string
+  version?: string
+}
+
+export interface HubManifest {
+  version: number
+  updatedAt?: string
+  skills?: string[]
+  rules?: string[]
+  mcps?: string[]
+  hooks?: string[]
+  tools?: string[]
+  items?: Array<{
+    type: HubResourceType
+    name: string
+    description?: string
+    tags?: string[]
+    files?: string[]
+  }>
+}
+
+export interface ScanResult {
+  skills: SkillResource[]
+  rules: RuleResource[]
+  mcps: McpResource[]
+  hooks: HookResource[]
+  subAgents: SubAgentResource[]
+  tools: ToolResource[]
+}
+
+export interface AssignTarget {
+  type: 'platform' | 'project'
+  id: string
+  label: string
+  platformId: PlatformId
+}
+
+export const PLATFORM_IDS: PlatformId[] = [
+  'cursor',
+  'cline',
+  'kilo',
+  'antigravity',
+  'devin',
+  'kiro'
+]
+
+export const PLATFORM_LABELS: Record<PlatformId, string> = {
+  cursor: 'Cursor',
+  cline: 'Cline',
+  kilo: 'Kilo',
+  antigravity: 'Antigravity',
+  devin: 'Devin',
+  kiro: 'Kiro'
+}
+
+export const DEFAULT_PLATFORM_ROOTS: Record<PlatformId, string> = {
+  cursor: '~/.cursor',
+  cline: '~/.cline',
+  kilo: '~/.kilo',
+  antigravity: '~/.antigravity',
+  devin: '~/.devin',
+  kiro: '~/.kiro'
+}
+
+export const CURSOR_ONLY_RESOURCES: ResourceType[] = ['hook', 'subAgent']

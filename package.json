@@ -1,0 +1,86 @@
+{
+  "name": "agent-manager",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Agent Manager - manage Skills, Rules, MCPs, Hooks, Sub-agents, and Tools across AI platforms",
+  "main": "./out/main/index.js",
+  "author": "Armin Dashti",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "npm run build && electron-builder --win portable",
+    "dist:dir": "npm run build && electron-builder --win dir",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
+  },
+  "dependencies": {
+    "@codemirror/lang-json": "^6.0.1",
+    "@codemirror/lang-markdown": "^6.3.2",
+    "@codemirror/lang-python": "^6.1.7",
+    "@codemirror/theme-one-dark": "^6.1.2",
+    "@uiw/react-codemirror": "^4.23.10",
+    "chokidar": "^4.0.3",
+    "clsx": "^2.1.1",
+    "codemirror": "^6.0.1",
+    "keytar": "^7.9.0",
+    "lucide-react": "^0.469.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.0.3",
+    "remark-gfm": "^4.0.0",
+    "simple-git": "^3.27.0",
+    "tailwind-merge": "^2.6.0",
+    "uuid": "^11.0.5",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.armindashti.agent-manager",
+    "productName": "AgentManager",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/logos",
+        "to": "logos",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/settings.template.json",
+        "to": "settings.template.json"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "AgentManager-${version}-portable.exe"
+    },
+    "portable": {
+      "artifactName": "AgentManager.exe"
+    }
+  }
+}
