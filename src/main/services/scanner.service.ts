@@ -6,6 +6,7 @@ import type {
   McpResource,
   ProjectInfo,
   ResourceSource,
+  ResourceType,
   RuleResource,
   ScanResult,
   SkillResource,
@@ -14,9 +15,11 @@ import type {
 } from '@shared/types'
 import { parseFrontmatter, stableId } from '@shared/utils'
 import { fileService } from './file.service'
-import { getAdapter, allAdapters } from '../platforms'
+import { getAdapter } from '../platforms'
 import type { PlatformAdapter, PlatformPaths } from '../platforms/types'
 import { supportsResource } from '../platforms/types'
+
+const PLATFORM_SCAN_TYPES: ResourceType[] = ['mcp', 'tool']
 
 export class ScannerService {
   async scanAll(settings: AppSettings): Promise<ScanResult> {
@@ -41,7 +44,7 @@ export class ScannerService {
         label: adapter.label
       }
 
-      await this.scanPaths(adapter, paths, source, settings, result)
+      await this.scanPaths(adapter, paths, source, settings, result, PLATFORM_SCAN_TYPES)
     }
 
     for (const root of settings.projectRoots) {
@@ -105,9 +108,12 @@ export class ScannerService {
     paths: PlatformPaths,
     source: ResourceSource,
     settings: AppSettings,
-    result: ScanResult
+    result: ScanResult,
+    allowedTypes?: ResourceType[]
   ): Promise<void> {
-    if (supportsResource(adapter, 'skill')) {
+    const canScan = (type: ResourceType) => !allowedTypes || allowedTypes.includes(type)
+
+    if (canScan('skill') && supportsResource(adapter, 'skill')) {
       for (const skillsDir of paths.skillsDirs) {
         const dirs = await fileService.listDirectories(skillsDir)
         for (const dir of dirs) {
@@ -128,7 +134,7 @@ export class ScannerService {
       }
     }
 
-    if (supportsResource(adapter, 'rule') && existsSync(paths.rulesDir)) {
+    if (canScan('rule') && supportsResource(adapter, 'rule') && existsSync(paths.rulesDir)) {
       const files = await fileService.listFilesRecursive(paths.rulesDir)
       for (const file of files) {
         if (!/\.(mdc|md)$/i.test(file)) continue
@@ -143,7 +149,7 @@ export class ScannerService {
       }
     }
 
-    if (supportsResource(adapter, 'mcp') && existsSync(paths.mcpConfigPath)) {
+    if (canScan('mcp') && supportsResource(adapter, 'mcp') && existsSync(paths.mcpConfigPath)) {
       try {
         const raw = await fileService.readText(paths.mcpConfigPath)
         const parsed = JSON.parse(raw) as { mcpServers?: Record<string, Record<string, unknown>> }
@@ -165,6 +171,7 @@ export class ScannerService {
     }
 
     if (
+      canScan('hook') &&
       supportsResource(adapter, 'hook') &&
       paths.hooksConfigPath &&
       existsSync(paths.hooksConfigPath)
@@ -189,7 +196,7 @@ export class ScannerService {
               name: hookName,
               configPath: paths.hooksConfigPath,
               definition: entry as HookResource['definition'],
-              scriptPath: command ? join(paths.hooksScriptsDir, basename(command)) : undefined,
+              scriptPath: command ? join(paths.hooksScriptsDir!, basename(command)) : undefined,
               scriptFiles,
               source,
               enabled: settings.assignments.hooks[id]?.includes(source.id) ?? true
@@ -201,7 +208,12 @@ export class ScannerService {
       }
     }
 
-    if (supportsResource(adapter, 'subAgent') && paths.agentsDir && existsSync(paths.agentsDir)) {
+    if (
+      canScan('subAgent') &&
+      supportsResource(adapter, 'subAgent') &&
+      paths.agentsDir &&
+      existsSync(paths.agentsDir)
+    ) {
       const files = await fileService.listFilesRecursive(paths.agentsDir)
       for (const file of files) {
         if (!/\.md$/i.test(file)) continue
@@ -220,7 +232,7 @@ export class ScannerService {
       }
     }
 
-    if (supportsResource(adapter, 'tool') && existsSync(paths.toolsDir)) {
+    if (canScan('tool') && supportsResource(adapter, 'tool') && existsSync(paths.toolsDir)) {
       const dirs = await fileService.listDirectories(paths.toolsDir)
       for (const dir of dirs) {
         const files = await fileService.listFilesRecursive(dir)

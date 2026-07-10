@@ -21,9 +21,14 @@ export function createDefaultSettings(): AppSettings {
       lastPushAt: null
     },
     hub: {
-      baseUrl: 'https://armindashti.github.com/agent-manager-hub',
-      catalogUrl: 'https://armindashti.github.com/agent-manager-hub/hub/manifest.json',
+      baseUrl: 'https://github.com/armindashti/praktoras-hub',
+      catalogUrl: 'https://github.com/armindashti/praktoras-hub/hub/manifest.json',
       lastFetchAt: null
+    },
+    sync: {
+      enabled: true,
+      intervalMinutes: 30,
+      lastSyncAt: null
     },
     assignments: {
       skills: {},
@@ -32,6 +37,17 @@ export function createDefaultSettings(): AppSettings {
       hooks: {},
       subAgents: {},
       tools: {}
+    },
+    mandatoryForAllProjects: {
+      skills: {},
+      rules: {},
+      hooks: {},
+      subAgents: {},
+      tools: {}
+    },
+    resourceCategories: {
+      skills: {},
+      rules: {}
     }
   }
 }

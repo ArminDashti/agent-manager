@@ -110,8 +110,10 @@ export function MarkdownEditor({
             className="h-full"
           />
         ) : (
-          <div className="markdown-preview h-full overflow-auto">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{savedContent}</ReactMarkdown>
+          <div className="markdown-preview h-full overflow-auto max-w-full min-w-0">
+            <div className="max-w-full min-w-0 break-words">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{savedContent}</ReactMarkdown>
+            </div>
           </div>
         )}
       </div>

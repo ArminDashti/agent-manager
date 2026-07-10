@@ -2,7 +2,7 @@
   "name": "agent-manager",
   "version": "1.0.0",
   "type": "module",
-  "description": "Agent Manager - manage Skills, Rules, MCPs, Hooks, Sub-agents, and Tools across AI platforms",
+  "description": "Janus - manage Skills, Rules, MCPs, Hooks, Sub-agents, and Tools across AI platforms",
   "main": "./out/main/index.js",
   "author": "Armin Dashti",
   "license": "MIT",
@@ -28,6 +28,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.3",
+    "react-resizable-panels": "^4.12.1",
     "remark-gfm": "^4.0.0",
     "simple-git": "^3.27.0",
     "tailwind-merge": "^2.6.0",
@@ -51,7 +52,7 @@
   },
   "build": {
     "appId": "com.armindashti.agent-manager",
-    "productName": "AgentManager",
+    "productName": "Janus",
     "directories": {
       "output": "release"
     },
@@ -63,7 +64,9 @@
       {
         "from": "resources/logos",
         "to": "logos",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "resources/settings.template.json",
@@ -74,13 +77,15 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "artifactName": "AgentManager-${version}-portable.exe"
+      "artifactName": "Janus-${version}-portable.exe"
     },
     "portable": {
-      "artifactName": "AgentManager.exe"
+      "artifactName": "Janus.exe"
     }
   }
 }

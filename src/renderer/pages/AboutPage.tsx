@@ -1,7 +1,7 @@
 export function AboutPage() {
   return (
     <div className="p-8 max-w-lg space-y-4">
-      <h2 className="text-2xl font-semibold">Agent Manager</h2>
+      <h2 className="text-2xl font-semibold">Janus</h2>
       <p className="text-zinc-400">Version 1.0.0</p>
       <p className="text-sm text-zinc-500 leading-relaxed">
         Manage Skills, Rules, MCPs, Hooks, Sub-agents, and Tools across Cursor, Cline, Kilo,

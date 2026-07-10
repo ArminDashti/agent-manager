@@ -35,7 +35,30 @@ body {
 }
 
 .markdown-preview {
-  @apply p-4 overflow-auto h-full text-zinc-200;
+  @apply p-4 overflow-y-auto overflow-x-hidden h-full text-zinc-200 break-words;
+  max-width: 100%;
+}
+
+.markdown-preview pre,
+.markdown-preview code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.markdown-preview table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
 }
 
 .markdown-preview h1 { @apply text-2xl font-bold mb-4; }

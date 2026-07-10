@@ -41,13 +41,17 @@ export const kiloAdapter = makeAdapter('kilo', 'Kilo', false)
 export const antigravityAdapter = makeAdapter('antigravity', 'Antigravity', false)
 export const devinAdapter = makeAdapter('devin', 'Devin', false)
 export const kiroAdapter = makeAdapter('kiro', 'Kiro', false)
+export const hermesAdapter = makeAdapter('hermes', 'Hermes', false)
+export const copilotAdapter = makeAdapter('copilot', 'Copilot', false)
 
 export const allAdapters = [
-  cursorAdapter,
-  clineAdapter,
-  kiloAdapter,
   antigravityAdapter,
+  clineAdapter,
+  copilotAdapter,
+  cursorAdapter,
   devinAdapter,
+  hermesAdapter,
+  kiloAdapter,
   kiroAdapter
 ]
 

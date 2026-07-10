@@ -1,10 +1,10 @@
-# Agent Manager
+# Janus
 
 Windows Electron app for managing **Skills**, **Rules**, **MCPs**, **Hooks**, **Sub-agents**, and **Tools** across AI platforms (Cursor, Cline, Kilo, Antigravity, Devin, Kiro).
 
 ## Features
 
-- Portable layout: `AgentManager.exe` + `settings.json` + `logos/` + `data/`
+- Portable layout: `Janus.exe` + `settings.json` + `logos/` + `data/`
 - Local-first editing with **Edit (.md)** and **Preview (.md)** modes
 - Public Hub catalog from `armindashti.github.com/agent-manager-hub`
 - Personal Repo Bank backup via git
@@ -28,8 +28,8 @@ Output in `release/`.
 ## Layout
 
 ```
-AgentManager/
-├── AgentManager.exe
+Janus/
+├── Janus.exe
 ├── settings.json
 ├── logos/
 └── data/

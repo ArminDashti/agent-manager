@@ -36,6 +36,22 @@ export class FileService {
     return entries.filter((e) => e.isDirectory()).map((e) => join(dir, e.name))
   }
 
+  async listEntries(dir: string): Promise<{ path: string; name: string; isDirectory: boolean }[]> {
+    if (!existsSync(dir)) return []
+
+    const entries = await readdir(dir, { withFileTypes: true })
+    return entries
+      .map((entry) => ({
+        path: join(dir, entry.name),
+        name: entry.name,
+        isDirectory: entry.isDirectory()
+      }))
+      .sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+  }
+
   async copyDirectory(src: string, dest: string): Promise<void> {
     if (!existsSync(src)) return
     await mkdir(dest, { recursive: true })
@@ -69,6 +85,12 @@ export class FileService {
 
   extension(path: string): string {
     return extname(path).toLowerCase()
+  }
+
+  async getMtime(filePath: string): Promise<number | null> {
+    if (!existsSync(filePath)) return null
+    const info = await stat(filePath)
+    return info.mtimeMs
   }
 }
 

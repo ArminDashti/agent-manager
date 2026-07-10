@@ -1,9 +1,46 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { createDefaultSettings } from '@shared/defaults'
 import type { AppSettings } from '@shared/types'
+import { ruleDisplayName } from '@shared/rule-names'
 import { getSettingsPath } from '../app-paths'
 
 let cached: AppSettings | null = null
+
+function migrateRuleKeys<T>(map: Record<string, T>): Record<string, T> {
+  const next: Record<string, T> = {}
+  for (const [key, value] of Object.entries(map)) {
+    const newKey = key.endsWith('.mdc') ? ruleDisplayName(key) : key
+    next[newKey] = value
+  }
+  return next
+}
+
+function migrateSettings(settings: AppSettings): AppSettings {
+  const defaults = createDefaultSettings()
+  const merged = { ...defaults, ...settings }
+
+  merged.mandatoryForAllProjects = {
+    ...defaults.mandatoryForAllProjects,
+    ...settings.mandatoryForAllProjects,
+    rules: migrateRuleKeys({
+      ...defaults.mandatoryForAllProjects.rules,
+      ...(settings.mandatoryForAllProjects?.rules ?? {})
+    })
+  }
+
+  merged.resourceCategories = {
+    skills: {
+      ...defaults.resourceCategories.skills,
+      ...(settings.resourceCategories?.skills ?? {})
+    },
+    rules: migrateRuleKeys({
+      ...defaults.resourceCategories.rules,
+      ...(settings.resourceCategories?.rules ?? {})
+    })
+  }
+
+  return merged
+}
 
 export class SettingsStore {
   load(): AppSettings {
@@ -13,8 +50,8 @@ export class SettingsStore {
     if (existsSync(path)) {
       try {
         const raw = readFileSync(path, 'utf-8')
-        cached = { ...createDefaultSettings(), ...JSON.parse(raw) }
-        return cached!
+        cached = migrateSettings(JSON.parse(raw) as AppSettings)
+        return cached
       } catch {
         cached = createDefaultSettings()
         return cached

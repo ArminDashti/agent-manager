@@ -1,4 +1,12 @@
-export type PlatformId = 'cursor' | 'cline' | 'kilo' | 'antigravity' | 'devin' | 'kiro'
+export type PlatformId =
+  | 'cursor'
+  | 'cline'
+  | 'kilo'
+  | 'antigravity'
+  | 'devin'
+  | 'kiro'
+  | 'hermes'
+  | 'copilot'
 
 export type ResourceType =
   | 'skill'
@@ -51,6 +59,11 @@ export interface AppSettings {
     catalogUrl: string
     lastFetchAt: string | null
   }
+  sync: {
+    enabled: boolean
+    intervalMinutes: number
+    lastSyncAt: string | null
+  }
   assignments: {
     skills: Record<string, string[]>
     rules: Record<string, string[]>
@@ -58,6 +71,17 @@ export interface AppSettings {
     hooks: Record<string, string[]>
     subAgents: Record<string, string[]>
     tools: Record<string, string[]>
+  }
+  mandatoryForAllProjects: {
+    skills: Record<string, boolean>
+    rules: Record<string, boolean>
+    hooks: Record<string, boolean>
+    subAgents: Record<string, boolean>
+    tools: Record<string, boolean>
+  }
+  resourceCategories: {
+    skills: Record<string, string>
+    rules: Record<string, string>
   }
 }
 
@@ -180,31 +204,57 @@ export interface AssignTarget {
   platformId: PlatformId
 }
 
+export interface ProjectMatrixRow {
+  projectId: string
+  projectName: string
+  assigned: boolean
+}
+
+export interface ResourceGroupSummary {
+  name: string
+  usedProjectCount: number
+  totalProjectCount: number
+  tokenEstimate: number
+  lastUpdatedAt: string | null
+  mandatory: boolean
+  canonicalId: string
+  description: string
+  category: string
+}
+
 export const PLATFORM_IDS: PlatformId[] = [
-  'cursor',
-  'cline',
-  'kilo',
   'antigravity',
+  'cline',
+  'copilot',
+  'cursor',
   'devin',
+  'hermes',
+  'kilo',
   'kiro'
 ]
 
 export const PLATFORM_LABELS: Record<PlatformId, string> = {
-  cursor: 'Cursor',
-  cline: 'Cline',
-  kilo: 'Kilo',
   antigravity: 'Antigravity',
+  cline: 'Cline',
+  copilot: 'Copilot',
+  cursor: 'Cursor',
   devin: 'Devin',
+  hermes: 'Hermes',
+  kilo: 'Kilo',
   kiro: 'Kiro'
 }
 
 export const DEFAULT_PLATFORM_ROOTS: Record<PlatformId, string> = {
-  cursor: '~/.cursor',
-  cline: '~/.cline',
-  kilo: '~/.kilo',
   antigravity: '~/.antigravity',
+  cline: '~/.cline',
+  copilot: '~/.copilot',
+  cursor: '~/.cursor',
   devin: '~/.devin',
+  hermes: '~/.hermes',
+  kilo: '~/.kilo',
   kiro: '~/.kiro'
 }
 
 export const CURSOR_ONLY_RESOURCES: ResourceType[] = ['hook', 'subAgent']
+
+export const PROJECT_ONLY_RESOURCES: ResourceType[] = ['skill', 'rule', 'hook', 'subAgent']

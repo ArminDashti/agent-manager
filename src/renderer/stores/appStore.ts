@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import type { AppSettings, HubCatalogItem, ScanResult } from '@shared/types'
 
 export type PageId =
-  | 'directories'
   | 'skills'
   | 'rules'
   | 'hooks'
@@ -26,8 +25,6 @@ interface AppState {
   setHubItems: (items: HubCatalogItem[]) => void
   loading: boolean
   setLoading: (loading: boolean) => void
-  searchQuery: string
-  setSearchQuery: (q: string) => void
   refreshScan: () => Promise<void>
   loadSettings: () => Promise<void>
 }
@@ -42,7 +39,7 @@ const emptyScan: ScanResult = {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  page: 'directories',
+  page: 'skills',
   setPage: (page) => set({ page }),
   hubFilter: null,
   setHubFilter: (hubFilter) => set({ hubFilter }),
@@ -54,8 +51,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setHubItems: (hubItems) => set({ hubItems }),
   loading: false,
   setLoading: (loading) => set({ loading }),
-  searchQuery: '',
-  setSearchQuery: (searchQuery) => set({ searchQuery }),
   loadSettings: async () => {
     const settings = await window.agentManager.getSettings()
     set({ settings })
