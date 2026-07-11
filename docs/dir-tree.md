@@ -2,7 +2,7 @@
 
 ```
 agent-manager/
-├── install.ps1              # Clean release/ and rebuild portable exe
+├── install.ps1              # npm install, clean release/, rebuild portable exe
 ├── docs/                    # Project documentation
 ├── resources/
 │   ├── logos/               # Bundled platform SVG logos

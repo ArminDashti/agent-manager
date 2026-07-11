@@ -20,6 +20,13 @@ npm run dev
 ## Build portable Windows app
 
 ```bash
+.\install.ps1
+```
+
+Or manually:
+
+```bash
+npm install
 npm run dist
 ```
 

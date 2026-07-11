@@ -22,4 +22,4 @@ Electron 34, React 19, TypeScript, Tailwind CSS, CodeMirror 6, Zustand, simple-g
 ## Build
 
 - `npm run dist` — build and export portable `Janus.exe` to `release/`
-- `.\install.ps1` — clear `release/` then run `npm run dist`
+- `.\install.ps1` — install npm dependencies, clear `release/`, then run `npm run dist`

@@ -4,7 +4,7 @@
 
 | Command | Description |
 |---------|-------------|
-| `.\install.ps1` | Remove `release/` contents and rebuild portable app (`npm run dist`) |
+| `.\install.ps1` | Run `npm install`, remove `release/` contents, and rebuild portable app (`npm run dist`) |
 | `.\install.ps1 --ShowHelp` | Show usage for install script |
 
 ## IPC

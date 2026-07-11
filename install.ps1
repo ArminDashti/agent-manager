@@ -34,8 +34,10 @@ function Show-Help {
     Write-Host '  .\install.ps1 --ShowHelp'
     Write-Host ''
     Write-Host 'Steps:' -ForegroundColor Yellow
-    Write-Host '  1. Remove all files and folders in release/'
-    Write-Host '  2. Run npm run dist (electron-vite build + electron-builder)'
+    Write-Host '  1. Check prerequisites (npm, package.json)'
+    Write-Host '  2. Install npm dependencies (npm install)'
+    Write-Host '  3. Remove all files and folders in release/'
+    Write-Host '  4. Run npm run dist (electron-vite build + electron-builder)'
     Write-Host ''
     Write-Host 'Output:' -ForegroundColor Yellow
     Write-Host "  $ReleaseDir\Janus.exe"
@@ -59,7 +61,7 @@ function Write-Step {
     Write-Host "[$Step/$Total] $Message" -ForegroundColor Cyan
 }
 
-$totalSteps = 3
+$totalSteps = 4
 
 Write-Step -Step 1 -Total $totalSteps -Message 'Checking prerequisites'
 
@@ -74,7 +76,20 @@ if (-not (Test-Path (Join-Path $RepoRoot 'package.json'))) {
     exit 1
 }
 
-Write-Step -Step 2 -Total $totalSteps -Message "Cleaning $ReleaseDir"
+Write-Step -Step 2 -Total $totalSteps -Message 'Installing npm dependencies (npm install)'
+
+Push-Location $RepoRoot
+try {
+    npm install
+    if ($LASTEXITCODE -ne 0) {
+        throw "npm install failed with exit code $LASTEXITCODE"
+    }
+}
+finally {
+    Pop-Location
+}
+
+Write-Step -Step 3 -Total $totalSteps -Message "Cleaning $ReleaseDir"
 
 if (Test-Path $ReleaseDir) {
     Get-ChildItem -Path $ReleaseDir -Force | Remove-Item -Recurse -Force
@@ -85,7 +100,7 @@ else {
     Write-Host '  Release folder created.' -ForegroundColor DarkGray
 }
 
-Write-Step -Step 3 -Total $totalSteps -Message 'Building and exporting app (npm run dist)'
+Write-Step -Step 4 -Total $totalSteps -Message 'Building and exporting app (npm run dist)'
 
 Push-Location $RepoRoot
 try {
