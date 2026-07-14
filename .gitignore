@@ -7,3 +7,5 @@ settings.json
 settings.secret
 *.log
 .DS_Store
+*.exe
+*.exe
