@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { oneDark } from '@codemirror/theme-one-dark'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@renderer/lib/utils'
+import { Group, Panel, ResizeHandle } from '@renderer/components/layout/ResizablePanels'
 
-type EditorMode = 'edit' | 'preview'
+type EditorMode = 'edit' | 'preview' | 'split'
 
 interface MarkdownEditorProps {
   filePath?: string
@@ -15,6 +16,54 @@ interface MarkdownEditorProps {
   onSave?: (value: string) => Promise<void>
   readOnly?: boolean
   className?: string
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [value, delayMs])
+
+  return debounced
+}
+
+function MarkdownPreview({ content }: { content: string }) {
+  return (
+    <div className="markdown-preview h-full overflow-auto max-w-full min-w-0">
+      <div className="markdown-prose max-w-3xl mx-auto break-words">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            code({ className, children, ...props }) {
+              const match = /language-(\w+)/.exec(className ?? '')
+              const isBlock = className?.includes('language-')
+              if (isBlock && match) {
+                return (
+                  <div className="code-block-wrapper">
+                    <div className="code-block-lang">{match[1]}</div>
+                    <pre>
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    </pre>
+                  </div>
+                )
+              }
+              return (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              )
+            }
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+    </div>
+  )
 }
 
 export function MarkdownEditor({
@@ -28,11 +77,10 @@ export function MarkdownEditor({
   const [mode, setMode] = useState<EditorMode>('edit')
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
-  const [savedContent, setSavedContent] = useState(value)
+  const previewContent = useDebouncedValue(draft, 150)
 
   useEffect(() => {
     setDraft(value)
-    setSavedContent(value)
   }, [value, filePath])
 
   const handleSave = useCallback(async () => {
@@ -40,7 +88,6 @@ export function MarkdownEditor({
     setSaving(true)
     try {
       await onSave(draft)
-      setSavedContent(draft)
       onChange?.(draft)
     } finally {
       setSaving(false)
@@ -58,30 +105,48 @@ export function MarkdownEditor({
     return () => window.removeEventListener('keydown', handler)
   }, [handleSave])
 
+  const modeButtons = useMemo(
+    () =>
+      [
+        { id: 'edit' as const, label: 'Edit (.md)' },
+        { id: 'preview' as const, label: 'Preview (.md)' },
+        { id: 'split' as const, label: 'Split' }
+      ] as const,
+    []
+  )
+
+  const editorPane = (
+    <CodeMirror
+      value={draft}
+      height="100%"
+      theme={oneDark}
+      extensions={[markdown()]}
+      editable={!readOnly}
+      onChange={(v) => {
+        setDraft(v)
+        onChange?.(v)
+      }}
+      className="h-full"
+    />
+  )
+
   return (
     <div className={cn('flex flex-col h-full border border-zinc-800 rounded-lg overflow-hidden', className)}>
       <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-800">
         <div className="flex rounded-md overflow-hidden border border-zinc-700">
-          <button
-            type="button"
-            onClick={() => setMode('edit')}
-            className={cn(
-              'px-3 py-1 text-xs',
-              mode === 'edit' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-            )}
-          >
-            Edit (.md)
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('preview')}
-            className={cn(
-              'px-3 py-1 text-xs',
-              mode === 'preview' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-            )}
-          >
-            Preview (.md)
-          </button>
+          {modeButtons.map((btn) => (
+            <button
+              key={btn.id}
+              type="button"
+              onClick={() => setMode(btn.id)}
+              className={cn(
+                'px-3 py-1 text-xs',
+                mode === btn.id ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+              )}
+            >
+              {btn.label}
+            </button>
+          ))}
         </div>
         {filePath && <span className="text-xs text-zinc-500 truncate flex-1">{filePath}</span>}
         {!readOnly && onSave && (
@@ -96,25 +161,18 @@ export function MarkdownEditor({
         )}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        {mode === 'edit' ? (
-          <CodeMirror
-            value={draft}
-            height="100%"
-            theme={oneDark}
-            extensions={[markdown()]}
-            editable={!readOnly}
-            onChange={(v) => {
-              setDraft(v)
-              onChange?.(v)
-            }}
-            className="h-full"
-          />
-        ) : (
-          <div className="markdown-preview h-full overflow-auto max-w-full min-w-0">
-            <div className="max-w-full min-w-0 break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{savedContent}</ReactMarkdown>
-            </div>
-          </div>
+        {mode === 'edit' && <div className="h-full">{editorPane}</div>}
+        {mode === 'preview' && <MarkdownPreview content={previewContent} />}
+        {mode === 'split' && (
+          <Group orientation="horizontal" className="h-full">
+            <Panel defaultSize={50} minSize={25}>
+              <div className="h-full border-r border-zinc-800">{editorPane}</div>
+            </Panel>
+            <ResizeHandle />
+            <Panel defaultSize={50} minSize={25}>
+              <MarkdownPreview content={previewContent} />
+            </Panel>
+          </Group>
         )}
       </div>
     </div>

@@ -1,12 +1,12 @@
 # Janus
 
-Windows Electron app for managing **Skills**, **Rules**, **MCPs**, **Hooks**, **Sub-agents**, and **Tools** across AI platforms (Cursor, Cline, Kilo, Antigravity, Devin, Kiro).
+Windows Electron app for managing **Skills**, **Rules**, **MCPs**, **Hooks**, **Sub-agents**, and **Tools** across AI platforms (Cursor, Antigravity, Codex, Grok, Copilot, Devin).
 
 ## Features
 
-- Portable layout: `Janus.exe` + `settings.json` + `logos/` + `data/`
+- Portable layout: `Janus.exe` + `settings.json` + `caches/` + `mcps/`
 - Local-first editing with **Edit (.md)** and **Preview (.md)** modes
-- Public Hub catalog from `armindashti.github.com/agent-manager-hub`
+- Public Hub catalog from `https://github.com/armindashti/janus-hub`
 - Personal Repo Bank backup via git
 - Hooks and Sub-agents: **Cursor only** (v1)
 
@@ -23,6 +23,12 @@ npm run dev
 .\install.ps1
 ```
 
+Install to a custom directory:
+
+```bash
+.\install.ps1 -Dir C:\Janus
+```
+
 Or manually:
 
 ```bash
@@ -30,7 +36,7 @@ npm install
 npm run dist
 ```
 
-Output in `release/`.
+Build output in `release/` (Janus.exe + settings.json only).
 
 ## Layout
 
@@ -38,6 +44,12 @@ Output in `release/`.
 Janus/
 ├── Janus.exe
 ├── settings.json
+├── caches/
+│   ├── skills/
+│   ├── hooks/
+│   ├── rules/
+│   └── agents/
+├── mcps/
 ├── logos/
 └── data/
 ```

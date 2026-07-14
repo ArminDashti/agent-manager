@@ -15,6 +15,7 @@ import type {
 } from '@shared/types'
 import { parseFrontmatter, stableId } from '@shared/utils'
 import { fileService } from './file.service'
+import { cacheService } from './cache.service'
 import { getAdapter } from '../platforms'
 import type { PlatformAdapter, PlatformPaths } from '../platforms/types'
 import { supportsResource } from '../platforms/types'
@@ -64,6 +65,22 @@ export class ScannerService {
           await this.scanPaths(adapter, paths, source, settings, result)
         }
       }
+    }
+
+    const cachePaths = cacheService.getCachePaths()
+    const cacheAdapter = getAdapter('cursor')
+    if (cacheAdapter) {
+      const cacheSource: ResourceSource = {
+        type: 'local',
+        id: 'cache',
+        label: 'Cache'
+      }
+      await this.scanPaths(cacheAdapter, cachePaths, cacheSource, settings, result, [
+        'skill',
+        'rule',
+        'hook',
+        'subAgent'
+      ])
     }
 
     return result

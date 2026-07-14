@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { createDefaultSettings } from '@shared/defaults'
 import type { AppSettings } from '@shared/types'
+import { PLATFORM_IDS } from '@shared/types'
 import { ruleDisplayName } from '@shared/rule-names'
 import { getSettingsPath } from '../app-paths'
 
@@ -37,6 +38,15 @@ function migrateSettings(settings: AppSettings): AppSettings {
       ...defaults.resourceCategories.rules,
       ...(settings.resourceCategories?.rules ?? {})
     })
+  }
+
+  const knownIds = new Set<string>(PLATFORM_IDS)
+  merged.platforms = merged.platforms.filter((p) => knownIds.has(p.id))
+  for (const id of PLATFORM_IDS) {
+    if (!merged.platforms.some((p) => p.id === id)) {
+      const defaultPlatform = defaults.platforms.find((p) => p.id === id)
+      if (defaultPlatform) merged.platforms.push(defaultPlatform)
+    }
   }
 
   return merged

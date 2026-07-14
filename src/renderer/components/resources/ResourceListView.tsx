@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Download, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Trash2 } from 'lucide-react'
 import type { ResourceGroupSummary, ResourceType } from '@shared/types'
 import { ResourceTable } from './ResourceTable'
 import { ResourceListToolbar, type ResourceFilter } from './ResourceListToolbar'
+import { ALL_PROJECTS_KEY } from './ProjectFilterDropdown'
+import { UNCATEGORIZED_KEY } from './CategoryFilterDropdown'
 import { Toggle } from '@renderer/components/Toggle'
 import { showMessage } from '@renderer/stores/messageStore'
+import { useAppStore } from '@renderer/stores/appStore'
 
 type ListableResourceType = Exclude<ResourceType, 'mcp'>
 
@@ -27,7 +30,20 @@ function formatDate(iso: string | null): string {
   })
 }
 
-function isEnhancedList(resourceType: ListableResourceType): resourceType is 'skill' | 'rule' {
+function isEnhancedGrid(
+  resourceType: ListableResourceType
+): resourceType is 'skill' | 'rule' | 'hook' | 'subAgent' {
+  return (
+    resourceType === 'skill' ||
+    resourceType === 'rule' ||
+    resourceType === 'hook' ||
+    resourceType === 'subAgent'
+  )
+}
+
+function hasCategoryColumn(
+  resourceType: ListableResourceType
+): resourceType is 'skill' | 'rule' {
   return resourceType === 'skill' || resourceType === 'rule'
 }
 
@@ -40,14 +56,17 @@ export function ResourceListView({
   onRefresh,
   onAdd
 }: ResourceListViewProps) {
+  const { settings } = useAppStore()
   const [summaries, setSummaries] = useState<ResourceGroupSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<ResourceFilter>('all')
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [selectedProjectId, setSelectedProjectId] = useState(ALL_PROJECTS_KEY)
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
   const [sortKey, setSortKey] = useState('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const enhanced = isEnhancedList(resourceType)
+  const enhanced = isEnhancedGrid(resourceType)
+  const showCategory = hasCategoryColumn(resourceType)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,13 +89,18 @@ export function ResourceListView({
   }, [load])
 
   const categories = useMemo(() => {
-    if (!enhanced) return []
+    if (!showCategory) return []
     const cats = new Set<string>()
     for (const row of summaries) {
       if (row.category.trim()) cats.add(row.category.trim())
     }
     return [...cats].sort((a, b) => a.localeCompare(b))
-  }, [summaries, enhanced])
+  }, [summaries, showCategory])
+
+  const projects = useMemo(
+    () => settings?.projectRoots.flatMap((r) => r.projects).sort((a, b) => a.name.localeCompare(b.name)) ?? [],
+    [settings]
+  )
 
   const filtered = useMemo(() => {
     let rows = summaries
@@ -87,15 +111,19 @@ export function ResourceListView({
         return haystack.includes(q)
       })
     }
+    if (enhanced && selectedProjectId !== ALL_PROJECTS_KEY) {
+      rows = rows.filter((r) => r.assignedProjectIds.includes(selectedProjectId))
+    }
     if (filter === 'single-project') {
       rows = rows.filter((r) => r.usedProjectCount === 1)
     }
-    if (enhanced && categoryFilter !== 'all') {
-      if (categoryFilter === '__uncategorized__') {
-        rows = rows.filter((r) => !r.category.trim())
-      } else {
-        rows = rows.filter((r) => r.category.trim() === categoryFilter)
-      }
+    if (showCategory && selectedCategories.size > 0) {
+      rows = rows.filter((r) => {
+        const cat = r.category.trim()
+        if (!cat && selectedCategories.has(UNCATEGORIZED_KEY)) return true
+        if (cat && selectedCategories.has(cat)) return true
+        return false
+      })
     }
     return [...rows].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1
@@ -118,7 +146,7 @@ export function ResourceListView({
           return a.name.localeCompare(b.name) * dir
       }
     })
-  }, [summaries, search, filter, categoryFilter, sortKey, sortDir, enhanced])
+  }, [summaries, search, filter, selectedCategories, selectedProjectId, sortKey, sortDir, showCategory, enhanced])
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -136,7 +164,7 @@ export function ResourceListView({
   }
 
   const handleCategoryChange = async (name: string, category: string) => {
-    if (!enhanced) return
+    if (!showCategory) return
     await window.agentManager.setResourceCategory(resourceType, name, category)
     await load()
     onRefresh?.()
@@ -195,21 +223,6 @@ export function ResourceListView({
     )
   }
 
-  const mandatoryCheckboxColumn = {
-    key: 'mandatory',
-    label: 'All projects',
-    className: 'w-28',
-    render: (row: ResourceGroupSummary) => (
-      <input
-        type="checkbox"
-        checked={row.mandatory}
-        onClick={stopProp}
-        onChange={(e) => void handleMandatory(row.name, e.target.checked)}
-        title="Mandatory for all projects"
-      />
-    )
-  }
-
   const mandatoryToggleColumn = {
     key: 'mandatory',
     label: 'All projects',
@@ -223,88 +236,34 @@ export function ResourceListView({
     )
   }
 
-  const legacyColumns = [
-    {
-      key: 'name',
-      label: 'Name',
-      sortable: true,
-      render: (row: ResourceGroupSummary) => (
-        <span className="font-medium text-zinc-200">{row.name}</span>
-      )
-    },
-    {
-      key: 'projects',
-      label: 'Projects',
-      sortable: true,
-      render: (row: ResourceGroupSummary) => (
-        <span className="text-zinc-400">
-          {row.usedProjectCount}/{row.totalProjectCount}
-        </span>
-      )
-    },
-    {
-      key: 'tokens',
-      label: 'Tokens',
-      sortable: true,
-      render: (row: ResourceGroupSummary) => (
-        <span className="text-zinc-400">{row.tokenEstimate.toLocaleString()}</span>
-      )
-    },
-    {
-      key: 'updated',
-      label: 'Last updated',
-      sortable: true,
-      render: (row: ResourceGroupSummary) => (
-        <span className="text-zinc-500">{formatDate(row.lastUpdatedAt)}</span>
-      )
-    },
-    installColumn,
-    {
-      key: 'edit',
-      label: '',
-      className: 'w-20',
-      render: (row: ResourceGroupSummary) => (
-        <button
-          type="button"
-          onClick={() => onEdit(row.name)}
-          className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400"
-          title="Edit"
-        >
-          <Pencil size={14} />
-        </button>
-      )
-    },
-    deleteColumn,
-    mandatoryCheckboxColumn
-  ]
+  const categoryColumn = {
+    key: 'category',
+    label: 'Category',
+    sortable: true,
+    className: 'w-36',
+    render: (row: ResourceGroupSummary) => (
+      <input
+        type="text"
+        defaultValue={row.category}
+        key={`${row.name}-${row.category}`}
+        placeholder="—"
+        onClick={stopProp}
+        onBlur={(e) => {
+          if (e.target.value.trim() !== row.category) {
+            void handleCategoryChange(row.name, e.target.value)
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.currentTarget.blur()
+          }
+        }}
+        className="w-full bg-transparent border border-transparent hover:border-zinc-700 focus:border-zinc-600 rounded px-1 py-0.5 text-sm text-zinc-300"
+      />
+    )
+  }
 
-  const enhancedColumns = [
-    {
-      key: 'category',
-      label: 'Category',
-      sortable: true,
-      className: 'w-36',
-      render: (row: ResourceGroupSummary) => (
-        <input
-          type="text"
-          defaultValue={row.category}
-          key={`${row.name}-${row.category}`}
-          placeholder="—"
-          onClick={stopProp}
-          onBlur={(e) => {
-            if (e.target.value.trim() !== row.category) {
-              void handleCategoryChange(row.name, e.target.value)
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.currentTarget.blur()
-            }
-          }}
-          className="w-full bg-transparent border border-transparent hover:border-zinc-700 focus:border-zinc-600 rounded px-1 py-0.5 text-sm text-zinc-300"
-        />
-      )
-    },
+  const enhancedBaseColumns = [
     {
       key: 'name',
       label: 'Name',
@@ -358,7 +317,64 @@ export function ResourceListView({
     deleteColumn
   ]
 
-  const columns = enhanced ? enhancedColumns : legacyColumns
+  const legacyColumns = [
+    {
+      key: 'name',
+      label: 'Name',
+      sortable: true,
+      render: (row: ResourceGroupSummary) => (
+        <span className="font-medium text-zinc-200">{row.name}</span>
+      )
+    },
+    {
+      key: 'projects',
+      label: 'Projects',
+      sortable: true,
+      render: (row: ResourceGroupSummary) => (
+        <span className="text-zinc-400">
+          {row.usedProjectCount}/{row.totalProjectCount}
+        </span>
+      )
+    },
+    {
+      key: 'tokens',
+      label: 'Tokens',
+      sortable: true,
+      render: (row: ResourceGroupSummary) => (
+        <span className="text-zinc-400">{row.tokenEstimate.toLocaleString()}</span>
+      )
+    },
+    {
+      key: 'updated',
+      label: 'Last updated',
+      sortable: true,
+      render: (row: ResourceGroupSummary) => (
+        <span className="text-zinc-500">{formatDate(row.lastUpdatedAt)}</span>
+      )
+    },
+    installColumn,
+    deleteColumn,
+    {
+      key: 'mandatory',
+      label: 'All projects',
+      className: 'w-28',
+      render: (row: ResourceGroupSummary) => (
+        <input
+          type="checkbox"
+          checked={row.mandatory}
+          onClick={stopProp}
+          onChange={(e) => void handleMandatory(row.name, e.target.checked)}
+          title="Mandatory for all projects"
+        />
+      )
+    }
+  ]
+
+  const columns = enhanced
+    ? showCategory
+      ? [categoryColumn, ...enhancedBaseColumns]
+      : enhancedBaseColumns
+    : legacyColumns
 
   return (
     <div className="flex flex-col h-full">
@@ -372,9 +388,13 @@ export function ResourceListView({
         filter={filter}
         onFilterChange={setFilter}
         onAdd={onAdd}
-        categoryFilter={enhanced ? categoryFilter : undefined}
-        onCategoryFilterChange={enhanced ? setCategoryFilter : undefined}
-        categories={enhanced ? categories : undefined}
+        selectedCategories={showCategory ? selectedCategories : undefined}
+        onCategoryFilterChange={showCategory ? setSelectedCategories : undefined}
+        categories={showCategory ? categories : undefined}
+        showProjectFilter={enhanced}
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onProjectFilterChange={setSelectedProjectId}
       />
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">Loading…</div>

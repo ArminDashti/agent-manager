@@ -1,12 +1,13 @@
 import { net } from 'electron'
 import { existsSync } from 'fs'
 import { mkdir, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { join, basename } from 'path'
 import type { AppSettings, HubCatalogItem, HubManifest, HubResourceType } from '@shared/types'
 import { HUB_TYPE_FOLDERS } from '@shared/utils'
 import { getDataPath } from '../app-paths'
 import { fileService } from './file.service'
 import { settingsStore } from './settings-store'
+import { cacheService } from './cache.service'
 
 const DEFAULT_FILES: Record<HubResourceType, string[]> = {
   skill: ['SKILL.md'],
@@ -119,6 +120,61 @@ export class HubService {
 
     if (!existsSync(src)) {
       await this.fetchResource(type, name)
+    }
+
+    if (type === 'skill' || type === 'rule' || type === 'hook') {
+      await cacheService.installFromHubCache(type, name, src)
+    }
+
+    if (type === 'skill') {
+      await fileService.copyDirectory(src, join(destDir, name))
+      return
+    }
+
+    if (type === 'rule') {
+      const candidates = ['rule.mdc', 'rule.md', `${name}.mdc`, `${name}.md`]
+      for (const file of candidates) {
+        const filePath = join(src, file)
+        if (existsSync(filePath)) {
+          await fileService.writeText(join(destDir, basename(file)), await fileService.readText(filePath))
+          return
+        }
+      }
+      return
+    }
+
+    if (type === 'hook') {
+      const hooksJson = join(src, 'hooks.json')
+      if (existsSync(hooksJson)) {
+        const destHooks = join(destDir, 'hooks.json')
+        if (existsSync(destHooks)) {
+          const existing = JSON.parse(await fileService.readText(destHooks)) as {
+            hooks?: Record<string, Array<Record<string, unknown>>>
+          }
+          const incoming = JSON.parse(await fileService.readText(hooksJson)) as {
+            hooks?: Record<string, Array<Record<string, unknown>>>
+          }
+          existing.hooks ??= {}
+          for (const [event, entries] of Object.entries(incoming.hooks ?? {})) {
+            const current = existing.hooks[event] ?? []
+            for (const entry of entries) {
+              const cmd = String(entry.command ?? '')
+              if (!current.some((e) => String(e.command ?? '') === cmd)) {
+                current.push(entry)
+              }
+            }
+            existing.hooks[event] = current
+          }
+          await fileService.writeText(destHooks, JSON.stringify(existing, null, 2))
+        } else {
+          await fileService.writeText(destHooks, await fileService.readText(hooksJson))
+        }
+      }
+      const hooksDir = join(src, 'hooks')
+      if (existsSync(hooksDir)) {
+        await fileService.copyDirectory(hooksDir, join(destDir, 'hooks'))
+      }
+      return
     }
 
     await fileService.copyDirectory(src, join(destDir, name))

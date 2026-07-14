@@ -20,6 +20,7 @@ import { assignmentService } from './assignment.service'
 import { scannerService } from './scanner.service'
 import { settingsStore } from './settings-store'
 import { repoBankService } from './repo-bank.service'
+import { cacheService } from './cache.service'
 
 type ScannedResource =
   | SkillResource
@@ -117,7 +118,19 @@ function groupByName(
 
 function pickCanonical(instances: ScannedResource[]): ScannedResource {
   const project = instances.find((i) => i.source.type === 'project')
-  return project ?? instances[0]
+  if (project) return project
+  const local = instances.find((i) => i.source.type === 'local')
+  return local ?? instances[0]
+}
+
+function collectAssignedProjectIds(instances: ScannedResource[]): string[] {
+  const projectIds = new Set<string>()
+  for (const item of instances) {
+    if (item.source.type === 'project') {
+      projectIds.add(item.source.id)
+    }
+  }
+  return [...projectIds]
 }
 
 function countProjectsUsing(instances: ScannedResource[]): number {
@@ -210,6 +223,8 @@ async function extractDescription(
     path = (item as SkillResource).skillMdPath
   } else if (resourceType === 'rule') {
     path = (item as RuleResource).filePath
+  } else if (resourceType === 'subAgent') {
+    path = (item as SubAgentResource).filePath
   } else {
     return ''
   }
@@ -244,7 +259,7 @@ export class ResourceService {
       const canonical = pickCanonical(instances)
       const [tokens, description, ...mtimes] = await Promise.all([
         estimateTokens(canonical, resourceType),
-        resourceType === 'skill' || resourceType === 'rule'
+        resourceType === 'skill' || resourceType === 'rule' || resourceType === 'subAgent'
           ? extractDescription(canonical, resourceType)
           : Promise.resolve(''),
         ...instances.map((i) => getLastUpdated(i, resourceType))
@@ -258,6 +273,7 @@ export class ResourceService {
         name,
         usedProjectCount: countProjectsUsing(instances),
         totalProjectCount: totalProjects,
+        assignedProjectIds: collectAssignedProjectIds(instances),
         tokenEstimate: tokens,
         lastUpdatedAt,
         mandatory: mandatoryMap[name] ?? false,
@@ -477,12 +493,16 @@ export class ResourceService {
     const safeName = name.trim()
     if (!safeName) throw new Error('Name is required')
 
-    for (const project of projects) {
-      const cursorDir = join(project.path, '.cursor')
-      await this.writeProjectResource(cursorDir, resourceType, safeName)
-    }
-
+    await this.writeCacheResource(resourceType, safeName)
     await this.writeRepoBankResource(resourceType, safeName)
+
+    const scan = await scannerService.scanAll(settingsStore.get())
+    const canonical = this.findCanonicalInstance(scan, resourceType, safeName)
+    if (!canonical) throw new Error(`Resource not found after create: ${safeName}`)
+
+    for (const project of projects) {
+      await assignmentService.assignToProject(canonical, resourceType, project.id)
+    }
 
     if (settings.repoBank.url) {
       try {
@@ -493,32 +513,23 @@ export class ResourceService {
     }
   }
 
-  private async writeProjectResource(
-    cursorDir: string,
+  private async writeCacheResource(
     resourceType: 'skill' | 'rule' | 'hook' | 'subAgent',
     name: string
   ): Promise<void> {
     switch (resourceType) {
-      case 'skill': {
-        const skillDir = join(cursorDir, 'skills', name)
-        await fileService.writeText(join(skillDir, 'SKILL.md'), skillTemplate(name))
+      case 'skill':
+        await cacheService.writeSkill(name, skillTemplate(name))
         break
-      }
-      case 'rule': {
-        const rulesDir = join(cursorDir, 'rules')
-        await fileService.writeText(join(rulesDir, `${name}.mdc`), ruleTemplate(name))
+      case 'rule':
+        await cacheService.writeRule(name, ruleTemplate(name))
         break
-      }
-      case 'hook': {
-        const hooksPath = join(cursorDir, 'hooks.json')
-        await this.appendHook(hooksPath, name)
+      case 'hook':
+        await cacheService.appendHook(name)
         break
-      }
-      case 'subAgent': {
-        const agentsDir = join(cursorDir, 'agents')
-        await fileService.writeText(join(agentsDir, `${name}.md`), subAgentTemplate(name))
+      case 'subAgent':
+        await cacheService.writeSubAgent(name, subAgentTemplate(name))
         break
-      }
     }
   }
 

@@ -5,12 +5,13 @@ import { expandHome } from '@shared/utils'
 export function createDefaultSettings(): AppSettings {
   const platforms: PlatformConfig[] = PLATFORM_IDS.map((id) => ({
     id,
-    enabled: id === 'cursor' || id === 'cline',
+    enabled: id === 'cursor',
     rootPath: expandHome(DEFAULT_PLATFORM_ROOTS[id])
   }))
 
   return {
     window: { maximized: true },
+    startup: { runOnLogin: false },
     dataPath: './data',
     platforms,
     projectRoots: [],
@@ -21,8 +22,8 @@ export function createDefaultSettings(): AppSettings {
       lastPushAt: null
     },
     hub: {
-      baseUrl: 'https://github.com/armindashti/praktoras-hub',
-      catalogUrl: 'https://github.com/armindashti/praktoras-hub/hub/manifest.json',
+      baseUrl: 'https://github.com/armindashti/janus-hub',
+      catalogUrl: 'https://github.com/armindashti/janus-hub/hub/manifest.json',
       lastFetchAt: null
     },
     sync: {

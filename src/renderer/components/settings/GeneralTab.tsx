@@ -12,6 +12,7 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
   const { loadSettings } = useAppStore()
   const [pat, setPat] = useState('')
   const [hubBase, setHubBase] = useState(settings.hub.baseUrl)
+  const [runOnLogin, setRunOnLogin] = useState(settings.startup?.runOnLogin ?? false)
   const [syncEnabled, setSyncEnabled] = useState(settings.sync?.enabled ?? true)
   const [syncInterval, setSyncInterval] = useState(settings.sync?.intervalMinutes ?? 30)
 
@@ -21,6 +22,7 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
 
   useEffect(() => {
     setHubBase(settings.hub.baseUrl)
+    setRunOnLogin(settings.startup?.runOnLogin ?? false)
     setSyncEnabled(settings.sync?.enabled ?? true)
     setSyncInterval(settings.sync?.intervalMinutes ?? 30)
   }, [settings])
@@ -33,6 +35,7 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
   const saveGeneral = async () => {
     const next: AppSettings = {
       ...settings,
+      startup: { runOnLogin },
       hub: {
         ...settings.hub,
         baseUrl: hubBase,
@@ -88,6 +91,21 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
         <button type="button" onClick={() => void fetchHub()} className="px-4 py-2 text-sm bg-zinc-800 rounded">
           Fetch Hub
         </button>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium text-zinc-400 uppercase">Startup</h3>
+        <p className="text-xs text-zinc-500">
+          Launch Janus automatically when you sign in to Windows.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={runOnLogin}
+            onChange={(e) => setRunOnLogin(e.target.checked)}
+          />
+          Run Janus when Windows starts
+        </label>
       </section>
 
       <section className="space-y-3">

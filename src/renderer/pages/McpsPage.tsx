@@ -1,11 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { JsonEditor } from '@renderer/components/JsonEditor'
-import { McpFieldPicker } from '@renderer/components/McpFieldPicker'
-import { McpFieldEditor } from '@renderer/components/McpFieldEditor'
 import { ResourceTable } from '@renderer/components/resources/ResourceTable'
 import { ResourceSubViewHeader } from '@renderer/components/resources/ResourceListView'
-import { flattenParamPaths } from '@renderer/lib/mcpParams'
 import { useAppStore } from '@renderer/stores/appStore'
 import { showMessage } from '@renderer/stores/messageStore'
 import type { McpResource } from '@shared/types'
@@ -19,11 +16,7 @@ export function McpsPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [addJson, setAddJson] = useState('{\n  "command": "npx",\n  "args": ["-y", "some-mcp-server"]\n}')
   const [addName, setAddName] = useState('')
-  const [params, setParams] = useState<Record<string, unknown>>({})
-  const [selectedPath, setSelectedPath] = useState('command')
-  const [showRawJson, setShowRawJson] = useState(false)
   const [paramsJson, setParamsJson] = useState('')
-  const [saving, setSaving] = useState(false)
 
   const mcps = useMemo(() => {
     const map = new Map<string, McpResource>()
@@ -40,11 +33,7 @@ export function McpsPage() {
 
   const openEdit = (mcp: McpResource) => {
     setSelected(mcp)
-    setParams({ ...mcp.params })
     setParamsJson(JSON.stringify(mcp.params, null, 2))
-    const paths = flattenParamPaths(mcp.params)
-    setSelectedPath(paths[0]?.path ?? 'command')
-    setShowRawJson(false)
     setView('edit')
   }
 
@@ -79,20 +68,22 @@ export function McpsPage() {
     }
   }
 
-  const saveParams = async () => {
+  const saveParams = async (jsonOverride?: string) => {
     if (!selected) return
-    setSaving(true)
     try {
-      const toSave = showRawJson ? JSON.parse(paramsJson) : params
+      const raw = jsonOverride ?? paramsJson
+      const toSave = JSON.parse(raw) as Record<string, unknown>
       const config = JSON.parse(await window.agentManager.readFile(selected.configPath))
       config.mcpServers ??= {}
       config.mcpServers[selected.name] = toSave
       await window.agentManager.writeFile(selected.configPath, JSON.stringify(config, null, 2))
-      setParams(toSave)
       setParamsJson(JSON.stringify(toSave, null, 2))
       await refreshScan()
-    } finally {
-      setSaving(false)
+    } catch (e) {
+      await showMessage({
+        message: e instanceof Error ? e.message : 'Invalid JSON',
+        type: 'error'
+      })
     }
   }
 
@@ -106,47 +97,26 @@ export function McpsPage() {
             setSelected(null)
           }}
         />
-        <div className="flex-1 overflow-auto p-4 space-y-4">
-          <p className="text-sm text-zinc-500">Platforms: {selected.platforms.join(', ')}</p>
-
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-zinc-400">
-              <input
-                type="checkbox"
-                checked={showRawJson}
-                onChange={(e) => setShowRawJson(e.target.checked)}
-              />
-              Raw JSON
-            </label>
-            <button
-              type="button"
-              onClick={() => void saveParams()}
-              disabled={saving}
-              className="px-4 py-1.5 text-sm bg-emerald-700 hover:bg-emerald-600 rounded disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+        <div className="flex-1 flex flex-col min-h-0 p-4 gap-4">
+          <div className="space-y-1 shrink-0">
+            <p className="text-sm text-zinc-500">Platforms: {selected.platforms.join(', ')}</p>
+            <p className="text-xs font-mono text-zinc-600 truncate" title={selected.configPath}>
+              {selected.configPath}
+            </p>
           </div>
 
-          {showRawJson ? (
-            <div className="h-96">
-              <JsonEditor
-                value={paramsJson}
-                onChange={setParamsJson}
-                onSave={async (v) => {
-                  setParamsJson(v)
-                  await saveParams()
-                }}
-              />
-            </div>
-          ) : (
-            <div className="space-y-3 max-w-2xl">
-              <McpFieldPicker params={params} selectedPath={selectedPath} onSelect={setSelectedPath} />
-              <McpFieldEditor params={params} selectedPath={selectedPath} onChange={setParams} />
-            </div>
-          )}
+          <div className="flex-1 min-h-0">
+            <JsonEditor
+              value={paramsJson}
+              onChange={setParamsJson}
+              onSave={async (v) => {
+                setParamsJson(v)
+                await saveParams(v)
+              }}
+            />
+          </div>
 
-          <div>
+          <div className="shrink-0">
             <h4 className="text-sm font-medium mb-2">Tools</h4>
             {selected.tools.length === 0 ? (
               <p className="text-sm text-zinc-500">No cached tools (status: {selected.status})</p>

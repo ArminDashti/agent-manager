@@ -21,8 +21,7 @@ export interface PlatformAdapter {
 }
 
 export function getProjectDotDir(platformId: PlatformId, projectPath: string): string {
-  if (platformId === 'cursor') return joinPath(projectPath, '.cursor')
-  if (platformId === 'cline') return joinPath(projectPath, '.cline')
+  if (platformId === 'copilot') return joinPath(projectPath, '.github')
   return joinPath(projectPath, `.${platformId}`)
 }
 

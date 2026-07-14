@@ -31,7 +31,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="h-full overflow-auto p-6 max-w-3xl">
+    <div className={cn('h-full overflow-auto p-6', tab === 'platforms' ? 'max-w-4xl' : 'max-w-3xl')}>
       <h2 className="text-lg font-medium mb-4">Settings</h2>
 
       <div className="flex border-b border-zinc-800 gap-1 mb-6">

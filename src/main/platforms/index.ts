@@ -1,6 +1,6 @@
 import { join } from 'path'
 import type { PlatformAdapter } from './types'
-import { createBasePaths } from './types'
+import { createBasePaths, getProjectDotDir } from './types'
 
 function makeAdapter(
   id: PlatformAdapter['id'],
@@ -24,35 +24,26 @@ function makeAdapter(
       return paths
     },
     getProjectPaths(projectPath: string) {
-      const dotDir =
-        id === 'cursor'
-          ? join(projectPath, '.cursor')
-          : id === 'cline'
-            ? join(projectPath, '.cline')
-            : join(projectPath, `.${id}`)
+      const dotDir = getProjectDotDir(id, projectPath)
       return createBasePaths(dotDir, hooksAndAgents)
     }
   }
 }
 
 export const cursorAdapter = makeAdapter('cursor', 'Cursor', true, 'skills-cursor')
-export const clineAdapter = makeAdapter('cline', 'Cline', false)
-export const kiloAdapter = makeAdapter('kilo', 'Kilo', false)
 export const antigravityAdapter = makeAdapter('antigravity', 'Antigravity', false)
-export const devinAdapter = makeAdapter('devin', 'Devin', false)
-export const kiroAdapter = makeAdapter('kiro', 'Kiro', false)
-export const hermesAdapter = makeAdapter('hermes', 'Hermes', false)
+export const codexAdapter = makeAdapter('codex', 'Codex', false)
 export const copilotAdapter = makeAdapter('copilot', 'Copilot', false)
+export const devinAdapter = makeAdapter('devin', 'Devin', false)
+export const grokAdapter = makeAdapter('grok', 'Grok', false)
 
 export const allAdapters = [
   antigravityAdapter,
-  clineAdapter,
+  codexAdapter,
   copilotAdapter,
   cursorAdapter,
   devinAdapter,
-  hermesAdapter,
-  kiloAdapter,
-  kiroAdapter
+  grokAdapter
 ]
 
 export function getAdapter(id: string): PlatformAdapter | undefined {

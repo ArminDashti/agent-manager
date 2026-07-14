@@ -4,7 +4,8 @@
 
 | Command | Description |
 |---------|-------------|
-| `.\install.ps1` | Run `npm install`, remove `release/` contents, and rebuild portable app (`npm run dist`) |
+| `.\install.ps1` | Run `npm install`, build portable app to `release/`, deploy layout to project root |
+| `.\install.ps1 -Dir C:\Janus` | Build and deploy to a custom install directory |
 | `.\install.ps1 --ShowHelp` | Show usage for install script |
 
 ## IPC

@@ -1,12 +1,10 @@
 export type PlatformId =
   | 'cursor'
-  | 'cline'
-  | 'kilo'
   | 'antigravity'
-  | 'devin'
-  | 'kiro'
-  | 'hermes'
+  | 'codex'
   | 'copilot'
+  | 'devin'
+  | 'grok'
 
 export type ResourceType =
   | 'skill'
@@ -45,6 +43,7 @@ export interface ProjectRootConfig {
 
 export interface AppSettings {
   window: { maximized: boolean }
+  startup: { runOnLogin: boolean }
   dataPath: string
   platforms: PlatformConfig[]
   projectRoots: ProjectRootConfig[]
@@ -214,6 +213,7 @@ export interface ResourceGroupSummary {
   name: string
   usedProjectCount: number
   totalProjectCount: number
+  assignedProjectIds: string[]
   tokenEstimate: number
   lastUpdatedAt: string | null
   mandatory: boolean
@@ -224,35 +224,29 @@ export interface ResourceGroupSummary {
 
 export const PLATFORM_IDS: PlatformId[] = [
   'antigravity',
-  'cline',
+  'codex',
   'copilot',
   'cursor',
   'devin',
-  'hermes',
-  'kilo',
-  'kiro'
+  'grok'
 ]
 
 export const PLATFORM_LABELS: Record<PlatformId, string> = {
   antigravity: 'Antigravity',
-  cline: 'Cline',
+  codex: 'Codex',
   copilot: 'Copilot',
   cursor: 'Cursor',
   devin: 'Devin',
-  hermes: 'Hermes',
-  kilo: 'Kilo',
-  kiro: 'Kiro'
+  grok: 'Grok'
 }
 
 export const DEFAULT_PLATFORM_ROOTS: Record<PlatformId, string> = {
   antigravity: '~/.antigravity',
-  cline: '~/.cline',
+  codex: '~/.codex',
   copilot: '~/.copilot',
   cursor: '~/.cursor',
   devin: '~/.devin',
-  hermes: '~/.hermes',
-  kilo: '~/.kilo',
-  kiro: '~/.kiro'
+  grok: '~/.grok'
 }
 
 export const CURSOR_ONLY_RESOURCES: ResourceType[] = ['hook', 'subAgent']

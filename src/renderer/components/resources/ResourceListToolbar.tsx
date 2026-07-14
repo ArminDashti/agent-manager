@@ -1,3 +1,7 @@
+import { CategoryFilterDropdown } from './CategoryFilterDropdown'
+import { ProjectFilterDropdown } from './ProjectFilterDropdown'
+import type { ProjectInfo } from '@shared/types'
+
 export type ResourceFilter = 'all' | 'single-project'
 
 interface ResourceListToolbarProps {
@@ -7,9 +11,13 @@ interface ResourceListToolbarProps {
   onFilterChange: (value: ResourceFilter) => void
   onAdd?: () => void
   addLabel?: string
-  categoryFilter?: string
-  onCategoryFilterChange?: (value: string) => void
+  selectedCategories?: Set<string>
+  onCategoryFilterChange?: (selected: Set<string>) => void
   categories?: string[]
+  projects?: ProjectInfo[]
+  selectedProjectId?: string
+  onProjectFilterChange?: (projectId: string) => void
+  showProjectFilter?: boolean
 }
 
 export function ResourceListToolbar({
@@ -19,9 +27,13 @@ export function ResourceListToolbar({
   onFilterChange,
   onAdd,
   addLabel = 'Add',
-  categoryFilter,
+  selectedCategories,
   onCategoryFilterChange,
-  categories = []
+  categories = [],
+  projects = [],
+  selectedProjectId,
+  onProjectFilterChange,
+  showProjectFilter = false
 }: ResourceListToolbarProps) {
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
@@ -32,20 +44,19 @@ export function ResourceListToolbar({
         placeholder="Search…"
         className="flex-1 max-w-xs bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm"
       />
-      {onCategoryFilterChange && (
-        <select
-          value={categoryFilter ?? 'all'}
-          onChange={(e) => onCategoryFilterChange(e.target.value)}
-          className="bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-300"
-        >
-          <option value="all">All categories</option>
-          {categories.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-          <option value="__uncategorized__">Uncategorized</option>
-        </select>
+      {showProjectFilter && onProjectFilterChange && selectedProjectId && (
+        <ProjectFilterDropdown
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          onChange={onProjectFilterChange}
+        />
+      )}
+      {onCategoryFilterChange && selectedCategories && (
+        <CategoryFilterDropdown
+          categories={categories}
+          selected={selectedCategories}
+          onChange={onCategoryFilterChange}
+        />
       )}
       <select
         value={filter}

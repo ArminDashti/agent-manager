@@ -12,8 +12,11 @@ import { assignmentService } from '../services/assignment.service'
 import { resourceService } from '../services/resource.service'
 import { hubService } from '../services/hub.service'
 import { repoBankService } from '../services/repo-bank.service'
+import { projectBootstrapService } from '../services/project-bootstrap.service'
+import { cacheService } from '../services/cache.service'
 import { startFileWatcher, stopFileWatcher } from '../services/watcher.service'
 import { restartSyncTimer } from '../services/sync.service'
+import { applyStartupSetting } from '../services/startup.service'
 import { getAdapter } from '../platforms'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -34,6 +37,7 @@ export function registerIpc(): void {
 
   ipcMain.handle('settings:save', (_e, settings: AppSettings) => {
     settingsStore.save(settings)
+    applyStartupSetting(settings.startup?.runOnLogin ?? false)
     stopFileWatcher()
     startFileWatcher()
     restartSyncTimer()
@@ -245,6 +249,8 @@ export function registerIpc(): void {
     const newProjects = collected.filter((p) => !seen.has(p.id))
     if (newProjects.length === 0) return { imported: 0, projects: [] }
 
+    await projectBootstrapService.bootstrapProjects(newProjects.map((p) => p.path))
+
     const rootId = uuidv4()
     settingsStore.update((s) => ({
       ...s,
@@ -259,6 +265,7 @@ export function registerIpc(): void {
     }))
 
     const newProjectIds = newProjects.filter((p) => !previousIds.has(p.id)).map((p) => p.id)
+    await cacheService.cacheResourcesFromProjects(newProjectIds)
     await resourceService.syncMandatoryForNewProjects(newProjectIds)
     stopFileWatcher()
     startFileWatcher()
@@ -285,12 +292,14 @@ export function registerIpc(): void {
       settingsStore.get().projectRoots.flatMap((r) => r.projects.map((p) => p.id))
     )
     const projects = await scannerService.discoverGitProjects(scanPath)
+    await projectBootstrapService.bootstrapProjects(projects.map((p) => p.path))
     const id = uuidv4()
     settingsStore.update((s) => ({
       ...s,
       projectRoots: [...s.projectRoots, { id, scanPath, projects }]
     }))
     const newProjectIds = projects.filter((p) => !previousIds.has(p.id)).map((p) => p.id)
+    await cacheService.cacheResourcesFromProjects(newProjectIds)
     await resourceService.syncMandatoryForNewProjects(newProjectIds)
     return { id, projects }
   })

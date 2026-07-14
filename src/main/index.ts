@@ -6,6 +6,7 @@ import { settingsStore } from './services/settings-store'
 import { ensurePortableLayout } from './app-paths'
 import { startFileWatcher } from './services/watcher.service'
 import { startSyncTimer } from './services/sync.service'
+import { applyStartupSetting } from './services/startup.service'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -56,6 +57,8 @@ function createWindow(): void {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   registerIpc()
+  const settings = settingsStore.load()
+  applyStartupSetting(settings.startup?.runOnLogin ?? false)
   createWindow()
   startFileWatcher()
   startSyncTimer()

@@ -1,5 +1,6 @@
 {
   "window": { "maximized": true },
+  "startup": { "runOnLogin": false },
   "dataPath": "./data",
   "platforms": [],
   "projectRoots": [],
@@ -10,8 +11,8 @@
     "lastPushAt": null
   },
   "hub": {
-    "baseUrl": "https://github.com/armindashti/praktoras-hub",
-    "catalogUrl": "https://github.com/armindashti/praktoras-hub/hub/manifest.json",
+    "baseUrl": "https://github.com/armindashti/janus-hub",
+    "catalogUrl": "https://github.com/armindashti/janus-hub/hub/manifest.json",
     "lastFetchAt": null
   },
   "sync": {

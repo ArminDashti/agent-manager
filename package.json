@@ -60,6 +60,12 @@
       "out/**/*",
       "package.json"
     ],
+    "extraFiles": [
+      {
+        "from": "resources/settings.template.json",
+        "to": "settings.json"
+      }
+    ],
     "extraResources": [
       {
         "from": "resources/logos",
