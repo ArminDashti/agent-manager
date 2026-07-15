@@ -49,6 +49,16 @@ function migrateSettings(settings: AppSettings): AppSettings {
     }
   }
 
+  merged.uiFilters = {
+    ...defaults.uiFilters,
+    ...(settings.uiFilters ?? {})
+  }
+
+  merged.github = {
+    ...defaults.github,
+    ...(settings.github ?? {})
+  }
+
   return merged
 }
 

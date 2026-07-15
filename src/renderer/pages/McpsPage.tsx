@@ -5,9 +5,25 @@ import { ResourceTable } from '@renderer/components/resources/ResourceTable'
 import { ResourceSubViewHeader } from '@renderer/components/resources/ResourceListView'
 import { useAppStore } from '@renderer/stores/appStore'
 import { showMessage } from '@renderer/stores/messageStore'
+import { cn } from '@renderer/lib/utils'
 import type { McpResource } from '@shared/types'
 
 type ViewMode = 'list' | 'edit'
+
+function statusBadgeClass(status: McpResource['status']): string {
+  switch (status) {
+    case 'connected':
+      return 'bg-emerald-900/50 text-emerald-400'
+    case 'configured':
+    case 'unknown':
+      return 'bg-amber-900/40 text-amber-400'
+    case 'error':
+    case 'disconnected':
+      return 'bg-red-900/40 text-red-400'
+    default:
+      return 'bg-zinc-800 text-zinc-400'
+  }
+}
 
 export function McpsPage() {
   const { scan, refreshScan } = useAppStore()
@@ -70,6 +86,11 @@ export function McpsPage() {
 
   const saveParams = async (jsonOverride?: string) => {
     if (!selected) return
+    const confirmed = await showMessage({
+      message: `Save changes to ${selected.name}?`,
+      confirm: true
+    })
+    if (!confirmed) return
     try {
       const raw = jsonOverride ?? paramsJson
       const toSave = JSON.parse(raw) as Record<string, unknown>
@@ -143,7 +164,9 @@ export function McpsPage() {
       key: 'status',
       label: 'Status',
       render: (row: McpResource) => (
-        <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">{row.status}</span>
+        <span className={cn('text-xs px-2 py-0.5 rounded', statusBadgeClass(row.status))}>
+          {row.status}
+        </span>
       )
     },
     {

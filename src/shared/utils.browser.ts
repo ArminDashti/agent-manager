@@ -35,3 +35,37 @@ export const HUB_TYPE_FOLDERS: Record<string, string> = {
   hook: 'hooks',
   tool: 'tools'
 }
+
+export function formatDateWithRelative(iso: string | null): string {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
+
+  const formatted = date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const diffDays = Math.round(
+    (startOfToday.getTime() - startOfDate.getTime()) / (1000 * 60 * 60 * 24)
+  )
+
+  if (diffDays === 0) return `${formatted} (today)`
+  if (diffDays === 1) return `${formatted} (1 day ago)`
+  return `${formatted} (${diffDays} days ago)`
+}
+
+export function isValidGithubUrl(url: string): boolean {
+  const trimmed = url.trim()
+  if (!trimmed) return false
+  try {
+    const parsed = new URL(trimmed)
+    return parsed.protocol === 'https:' && parsed.hostname === 'github.com'
+  } catch {
+    return false
+  }
+}

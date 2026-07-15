@@ -6,6 +6,7 @@ let syncTimer: ReturnType<typeof setInterval> | null = null
 export async function runSyncCycle(): Promise<void> {
   const settings = settingsStore.get()
   if (!settings.repoBank.url) return
+  if (!settings.github?.patValid) return
 
   try {
     await repoBankService.fetch()
@@ -23,7 +24,7 @@ export function startSyncTimer(): void {
   stopSyncTimer()
   const settings = settingsStore.get()
   const sync = settings.sync ?? { enabled: true, intervalMinutes: 30, lastSyncAt: null }
-  if (!sync.enabled || !settings.repoBank.url) return
+  if (!sync.enabled || !settings.repoBank.url || !settings.github?.patValid) return
 
   const minutes = sync.intervalMinutes ?? 30
   const ms = Math.max(1, minutes) * 60 * 1000

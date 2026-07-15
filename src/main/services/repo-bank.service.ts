@@ -5,10 +5,15 @@ import { join } from 'path'
 import { getDataPath } from '../app-paths'
 import { settingsStore } from './settings-store'
 import { fileService } from './file.service'
+import { withPatInGitUrl } from './github.service'
 
 export class RepoBankService {
   private gitFor(path: string): SimpleGit {
     return simpleGit(path)
+  }
+
+  private getPat(): string {
+    return settingsStore.get().github?.pat ?? ''
   }
 
   async ensureClone(): Promise<string> {
@@ -18,21 +23,27 @@ export class RepoBankService {
 
     if (!existsSync(join(clonePath, '.git'))) {
       if (settings.repoBank.url) {
-        await simpleGit().clone(settings.repoBank.url, clonePath)
+        const url = withPatInGitUrl(settings.repoBank.url, this.getPat())
+        await simpleGit().clone(url, clonePath)
       }
     }
 
     return clonePath
   }
 
-  async fetch(pat?: string): Promise<string> {
+  async fetch(): Promise<string> {
+    const settings = settingsStore.get()
     const clonePath = await this.ensureClone()
     const git = this.gitFor(clonePath)
-    if (pat) {
-      await git.pull('origin', 'main')
-    } else {
-      await git.pull()
+
+    const pat = this.getPat()
+    if (pat && settings.repoBank.url) {
+      const remoteUrl = withPatInGitUrl(settings.repoBank.url, pat)
+      await git.removeRemote('origin').catch(() => undefined)
+      await git.addRemote('origin', remoteUrl)
     }
+
+    await git.pull()
 
     settingsStore.update((s) => ({
       ...s,
@@ -42,9 +53,18 @@ export class RepoBankService {
     return clonePath
   }
 
-  async commitAndPush(message: string, pat?: string): Promise<void> {
+  async commitAndPush(message: string): Promise<void> {
+    const settings = settingsStore.get()
     const clonePath = await this.ensureClone()
     const git = this.gitFor(clonePath)
+
+    const pat = this.getPat()
+    if (pat && settings.repoBank.url) {
+      const remoteUrl = withPatInGitUrl(settings.repoBank.url, pat)
+      await git.removeRemote('origin').catch(() => undefined)
+      await git.addRemote('origin', remoteUrl)
+    }
+
     await git.add('.')
     const status = await git.status()
     if (status.files.length === 0) return

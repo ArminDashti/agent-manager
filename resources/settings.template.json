@@ -4,6 +4,11 @@
   "dataPath": "./data",
   "platforms": [],
   "projectRoots": [],
+  "github": {
+    "pat": "",
+    "patValid": false,
+    "patValidatedAt": null
+  },
   "repoBank": {
     "url": "",
     "localClonePath": "./data/repo-bank",
@@ -38,5 +43,6 @@
   "resourceCategories": {
     "skills": {},
     "rules": {}
-  }
+  },
+  "uiFilters": {}
 }

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Download, Trash2 } from 'lucide-react'
-import type { ResourceGroupSummary, ResourceType } from '@shared/types'
+import type { ResourceGroupSummary, ResourceType, UiFilterState } from '@shared/types'
+import { formatDateWithRelative } from '@shared/utils.browser'
 import { ResourceTable } from './ResourceTable'
 import { ResourceListToolbar, type ResourceFilter } from './ResourceListToolbar'
 import { ALL_PROJECTS_KEY } from './ProjectFilterDropdown'
 import { UNCATEGORIZED_KEY } from './CategoryFilterDropdown'
-import { Toggle } from '@renderer/components/Toggle'
 import { showMessage } from '@renderer/stores/messageStore'
 import { useAppStore } from '@renderer/stores/appStore'
 
@@ -15,19 +15,12 @@ interface ResourceListViewProps {
   title: string
   subtitle?: string
   resourceType: ListableResourceType
+  filterState: UiFilterState
+  onFilterChange: (patch: Partial<UiFilterState>) => void
   onAssign: (name: string) => void
   onEdit: (name: string) => void
   onRefresh?: () => void
   onAdd?: () => void
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
 }
 
 function isEnhancedGrid(
@@ -47,10 +40,18 @@ function hasCategoryColumn(
   return resourceType === 'skill' || resourceType === 'rule'
 }
 
+function isRenamable(
+  resourceType: ListableResourceType
+): resourceType is 'skill' | 'rule' | 'hook' | 'subAgent' {
+  return isEnhancedGrid(resourceType)
+}
+
 export function ResourceListView({
   title,
   subtitle,
   resourceType,
+  filterState,
+  onFilterChange,
   onAssign,
   onEdit,
   onRefresh,
@@ -59,14 +60,17 @@ export function ResourceListView({
   const { settings } = useAppStore()
   const [summaries, setSummaries] = useState<ResourceGroupSummary[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<ResourceFilter>('all')
-  const [selectedProjectId, setSelectedProjectId] = useState(ALL_PROJECTS_KEY)
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
-  const [sortKey, setSortKey] = useState('name')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const { search, filter, selectedProjectId, selectedCategories, sortKey, sortDir } =
+    filterState
+  const selectedCategorySet = useMemo(
+    () => new Set(selectedCategories),
+    [selectedCategories]
+  )
+
   const enhanced = isEnhancedGrid(resourceType)
   const showCategory = hasCategoryColumn(resourceType)
+  const renamable = isRenamable(resourceType)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -117,11 +121,11 @@ export function ResourceListView({
     if (filter === 'single-project') {
       rows = rows.filter((r) => r.usedProjectCount === 1)
     }
-    if (showCategory && selectedCategories.size > 0) {
+    if (showCategory && selectedCategorySet.size > 0) {
       rows = rows.filter((r) => {
         const cat = r.category.trim()
-        if (!cat && selectedCategories.has(UNCATEGORIZED_KEY)) return true
-        if (cat && selectedCategories.has(cat)) return true
+        if (!cat && selectedCategorySet.has(UNCATEGORIZED_KEY)) return true
+        if (cat && selectedCategorySet.has(cat)) return true
         return false
       })
     }
@@ -146,21 +150,24 @@ export function ResourceListView({
           return a.name.localeCompare(b.name) * dir
       }
     })
-  }, [summaries, search, filter, selectedCategories, selectedProjectId, sortKey, sortDir, showCategory, enhanced])
+  }, [
+    summaries,
+    search,
+    filter,
+    selectedCategorySet,
+    selectedProjectId,
+    sortKey,
+    sortDir,
+    showCategory,
+    enhanced
+  ])
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      onFilterChange({ sortDir: sortDir === 'asc' ? 'desc' : 'asc' })
     } else {
-      setSortKey(key)
-      setSortDir('asc')
+      onFilterChange({ sortKey: key, sortDir: 'asc' })
     }
-  }
-
-  const handleMandatory = async (name: string, checked: boolean) => {
-    await window.agentManager.setMandatory(resourceType, name, checked)
-    await load()
-    onRefresh?.()
   }
 
   const handleCategoryChange = async (name: string, category: string) => {
@@ -168,6 +175,20 @@ export function ResourceListView({
     await window.agentManager.setResourceCategory(resourceType, name, category)
     await load()
     onRefresh?.()
+  }
+
+  const handleRename = async (oldName: string, newName: string) => {
+    if (!renamable) return
+    try {
+      await window.agentManager.renameResource(resourceType, oldName, newName)
+      await load()
+      onRefresh?.()
+    } catch (e) {
+      await showMessage({
+        message: e instanceof Error ? e.message : 'Rename failed',
+        type: 'error'
+      })
+    }
   }
 
   const handleDelete = async (name: string) => {
@@ -223,19 +244,6 @@ export function ResourceListView({
     )
   }
 
-  const mandatoryToggleColumn = {
-    key: 'mandatory',
-    label: 'All projects',
-    className: 'w-28',
-    render: (row: ResourceGroupSummary) => (
-      <Toggle
-        checked={row.mandatory}
-        onChange={(checked) => void handleMandatory(row.name, checked)}
-        title="Mandatory for all projects"
-      />
-    )
-  }
-
   const categoryColumn = {
     key: 'category',
     label: 'Category',
@@ -263,15 +271,33 @@ export function ResourceListView({
     )
   }
 
-  const enhancedBaseColumns = [
-    {
-      key: 'name',
-      label: 'Name',
-      sortable: true,
-      render: (row: ResourceGroupSummary) => (
+  const nameColumn = {
+    key: 'name',
+    label: 'Name',
+    sortable: true,
+    render: (row: ResourceGroupSummary) =>
+      renamable ? (
+        <input
+          type="text"
+          defaultValue={row.name}
+          key={`${row.name}-resource-name`}
+          onClick={stopProp}
+          onBlur={(e) => {
+            const next = e.target.value.trim()
+            if (next && next !== row.name) void handleRename(row.name, next)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+          }}
+          className="w-full bg-transparent border border-transparent hover:border-zinc-700 focus:border-zinc-600 rounded px-1 py-0.5 text-sm font-medium text-zinc-200"
+        />
+      ) : (
         <span className="font-medium text-zinc-200">{row.name}</span>
       )
-    },
+  }
+
+  const enhancedBaseColumns = [
+    nameColumn,
     {
       key: 'description',
       label: 'Description',
@@ -309,23 +335,15 @@ export function ResourceListView({
       label: 'Last updated',
       sortable: true,
       render: (row: ResourceGroupSummary) => (
-        <span className="text-zinc-500">{formatDate(row.lastUpdatedAt)}</span>
+        <span className="text-zinc-500">{formatDateWithRelative(row.lastUpdatedAt)}</span>
       )
     },
-    mandatoryToggleColumn,
     installColumn,
     deleteColumn
   ]
 
   const legacyColumns = [
-    {
-      key: 'name',
-      label: 'Name',
-      sortable: true,
-      render: (row: ResourceGroupSummary) => (
-        <span className="font-medium text-zinc-200">{row.name}</span>
-      )
-    },
+    nameColumn,
     {
       key: 'projects',
       label: 'Projects',
@@ -349,25 +367,11 @@ export function ResourceListView({
       label: 'Last updated',
       sortable: true,
       render: (row: ResourceGroupSummary) => (
-        <span className="text-zinc-500">{formatDate(row.lastUpdatedAt)}</span>
+        <span className="text-zinc-500">{formatDateWithRelative(row.lastUpdatedAt)}</span>
       )
     },
     installColumn,
-    deleteColumn,
-    {
-      key: 'mandatory',
-      label: 'All projects',
-      className: 'w-28',
-      render: (row: ResourceGroupSummary) => (
-        <input
-          type="checkbox"
-          checked={row.mandatory}
-          onClick={stopProp}
-          onChange={(e) => void handleMandatory(row.name, e.target.checked)}
-          title="Mandatory for all projects"
-        />
-      )
-    }
+    deleteColumn
   ]
 
   const columns = enhanced
@@ -384,17 +388,22 @@ export function ResourceListView({
       </header>
       <ResourceListToolbar
         search={search}
-        onSearchChange={setSearch}
-        filter={filter}
-        onFilterChange={setFilter}
+        onSearchChange={(value) => onFilterChange({ search: value })}
+        filter={filter as ResourceFilter}
+        onFilterChange={(value) => onFilterChange({ filter: value })}
         onAdd={onAdd}
-        selectedCategories={showCategory ? selectedCategories : undefined}
-        onCategoryFilterChange={showCategory ? setSelectedCategories : undefined}
+        selectedCategories={showCategory ? selectedCategorySet : undefined}
+        onCategoryFilterChange={
+          showCategory
+            ? (selected) =>
+                onFilterChange({ selectedCategories: [...selected] })
+            : undefined
+        }
         categories={showCategory ? categories : undefined}
         showProjectFilter={enhanced}
         projects={projects}
         selectedProjectId={selectedProjectId}
-        onProjectFilterChange={setSelectedProjectId}
+        onProjectFilterChange={(value) => onFilterChange({ selectedProjectId: value })}
       />
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">Loading…</div>

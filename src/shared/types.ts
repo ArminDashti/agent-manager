@@ -41,12 +41,26 @@ export interface ProjectRootConfig {
   projects: ProjectInfo[]
 }
 
+export interface UiFilterState {
+  search: string
+  filter: 'all' | 'single-project'
+  selectedProjectId: string
+  selectedCategories: string[]
+  sortKey: string
+  sortDir: 'asc' | 'desc'
+}
+
 export interface AppSettings {
   window: { maximized: boolean }
   startup: { runOnLogin: boolean }
   dataPath: string
   platforms: PlatformConfig[]
   projectRoots: ProjectRootConfig[]
+  github: {
+    pat: string
+    patValid: boolean
+    patValidatedAt: string | null
+  }
   repoBank: {
     url: string
     localClonePath: string
@@ -63,6 +77,7 @@ export interface AppSettings {
     intervalMinutes: number
     lastSyncAt: string | null
   }
+  uiFilters: Record<string, Partial<UiFilterState>>
   assignments: {
     skills: Record<string, string[]>
     rules: Record<string, string[]>
@@ -113,7 +128,7 @@ export interface McpResource {
   owner?: string
   params: Record<string, unknown>
   tools: McpTool[]
-  status: 'connected' | 'disconnected' | 'unknown' | 'error'
+  status: 'connected' | 'disconnected' | 'unknown' | 'error' | 'configured'
   platforms: string[]
   configPath: string
 }
@@ -220,6 +235,7 @@ export interface ResourceGroupSummary {
   canonicalId: string
   description: string
   category: string
+  event?: string
 }
 
 export const PLATFORM_IDS: PlatformId[] = [

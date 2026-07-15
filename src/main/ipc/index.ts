@@ -17,18 +17,9 @@ import { cacheService } from '../services/cache.service'
 import { startFileWatcher, stopFileWatcher } from '../services/watcher.service'
 import { restartSyncTimer } from '../services/sync.service'
 import { applyStartupSetting } from '../services/startup.service'
+import { validatePat } from '../services/github.service'
 import { getAdapter } from '../platforms'
 import { v4 as uuidv4 } from 'uuid'
-
-let keytar: typeof import('keytar') | null = null
-try {
-  keytar = require('keytar')
-} catch {
-  keytar = null
-}
-
-const SERVICE_NAME = 'agent-manager'
-const ACCOUNT_NAME = 'github-pat'
 
 export function registerIpc(): void {
   ipcMain.handle('app:getRoot', () => getAppRoot())
@@ -50,20 +41,7 @@ export function registerIpc(): void {
     return defaults
   })
 
-  ipcMain.handle('pat:get', async () => {
-    if (keytar) {
-      return (await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME)) ?? ''
-    }
-    return ''
-  })
-
-  ipcMain.handle('pat:set', async (_e, token: string) => {
-    if (keytar) {
-      if (token) await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token)
-      else await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME)
-    }
-    return true
-  })
+  ipcMain.handle('github:validatePat', async (_e, pat: string) => validatePat(pat))
 
   ipcMain.handle('scan:all', async () => scannerService.scanAll(settingsStore.get()))
 
@@ -145,6 +123,21 @@ export function registerIpc(): void {
     'resource:setCategory',
     async (_e, resourceType: 'skill' | 'rule', resourceName: string, category: string) => {
       await resourceService.setResourceCategory(resourceType, resourceName, category)
+      return true
+    }
+  )
+
+  ipcMain.handle(
+    'resource:rename',
+    async (
+      _e,
+      resourceType: 'skill' | 'rule' | 'hook' | 'subAgent',
+      oldName: string,
+      newName: string
+    ) => {
+      const settings = settingsStore.get()
+      const scan = await scannerService.scanAll(settings)
+      await resourceService.renameResource(scan, resourceType, oldName, newName)
       return true
     }
   )

@@ -19,6 +19,7 @@ import { cacheService } from './cache.service'
 import { getAdapter } from '../platforms'
 import type { PlatformAdapter, PlatformPaths } from '../platforms/types'
 import { supportsResource } from '../platforms/types'
+import { probeMcpServers } from './mcp-probe.service'
 
 const PLATFORM_SCAN_TYPES: ResourceType[] = ['mcp', 'tool']
 
@@ -83,7 +84,28 @@ export class ScannerService {
       ])
     }
 
+    await this.probeMcps(result)
+
     return result
+  }
+
+  private async probeMcps(result: ScanResult): Promise<void> {
+    const unique = new Map<string, Record<string, unknown>>()
+    for (const mcp of result.mcps) {
+      if (!unique.has(mcp.name)) unique.set(mcp.name, mcp.params)
+    }
+
+    const probes = await probeMcpServers(
+      [...unique.entries()].map(([name, params]) => ({ name, params }))
+    )
+
+    for (const mcp of result.mcps) {
+      const probe = probes.get(mcp.name)
+      if (probe) {
+        mcp.status = probe.status
+        mcp.tools = probe.tools
+      }
+    }
   }
 
   async discoverGitProjects(scanPath: string): Promise<ProjectInfo[]> {

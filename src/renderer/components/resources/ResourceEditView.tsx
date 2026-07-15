@@ -13,6 +13,18 @@ import { MarkdownEditor } from '@renderer/components/MarkdownEditor'
 import { JsonEditor } from '@renderer/components/JsonEditor'
 import { TwoPanelLayout } from '@renderer/components/layout/TwoPanelLayout'
 import { ResourceSubViewHeader } from './ResourceListView'
+import { showMessage } from '@renderer/stores/messageStore'
+
+function fileBaseName(path: string): string {
+  return path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? path
+}
+
+async function confirmSave(filePath: string): Promise<boolean> {
+  return showMessage({
+    message: `Save changes to ${fileBaseName(filePath)}?`,
+    confirm: true
+  })
+}
 
 type ListableResourceType = Exclude<ResourceType, 'mcp'>
 type CanonicalResource =
@@ -194,6 +206,7 @@ function EditorPane({
         value={content}
         onChange={onChange}
         onSave={async (v) => {
+          if (!(await confirmSave(filePath))) return
           await window.agentManager.writeFile(filePath, v)
         }}
       />
@@ -204,6 +217,7 @@ function EditorPane({
       value={content}
       onChange={onChange}
       onSave={async (v) => {
+        if (!(await confirmSave(filePath))) return
         await window.agentManager.writeFile(filePath, v)
       }}
     />

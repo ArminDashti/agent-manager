@@ -5,6 +5,7 @@ export interface TableColumn<T> {
   label: string
   sortable?: boolean
   className?: string
+  renderHeader?: () => React.ReactNode
   render: (row: T) => React.ReactNode
 }
 
@@ -36,7 +37,9 @@ export function ResourceTable<T>({
           <tr className="border-b border-zinc-800 text-left text-zinc-400">
             {columns.map((col) => (
               <th key={col.key} className={cn('px-4 py-2 font-medium', col.className)}>
-                {col.sortable && onSort ? (
+                {col.renderHeader ? (
+                  col.renderHeader()
+                ) : col.sortable && onSort ? (
                   <button
                     type="button"
                     onClick={() => onSort(col.key)}

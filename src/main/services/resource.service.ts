@@ -13,7 +13,8 @@ import type {
   ToolResource
 } from '@shared/types'
 import { CURSOR_ONLY_RESOURCES } from '@shared/types'
-import { ruleDisplayName, ruleMatchesDisplayName } from '@shared/rule-names'
+import { ruleBaseName, ruleDisplayName, ruleMatchesDisplayName } from '@shared/rule-names'
+import { isValidResourceName } from '@shared/resource-names'
 import { parseFrontmatter } from '@shared/utils'
 import { fileService } from './file.service'
 import { assignmentService } from './assignment.service'
@@ -279,7 +280,11 @@ export class ResourceService {
         mandatory: mandatoryMap[name] ?? false,
         canonicalId: canonical.id,
         description,
-        category: categoryMap[name] ?? ''
+        category: categoryMap[name] ?? '',
+        event:
+          resourceType === 'hook'
+            ? (canonical as HookResource).event
+            : undefined
       })
     }
 
@@ -576,6 +581,220 @@ export class ResourceService {
     if (!existsSync(scriptPath)) {
       await fileService.writeText(scriptPath, '#!/bin/sh\necho "hook"\n')
     }
+  }
+
+  async renameResource(
+    scan: ScanResult,
+    resourceType: 'skill' | 'rule' | 'hook' | 'subAgent',
+    oldName: string,
+    newName: string
+  ): Promise<void> {
+    const trimmed = newName.trim()
+    if (!isValidResourceName(trimmed)) {
+      throw new Error('Invalid resource name')
+    }
+    if (trimmed === oldName) return
+
+    const items = filterItems(getItems(scan, resourceType), resourceType)
+    const existing = groupByName(items, resourceType)
+    if (existing.has(trimmed)) {
+      throw new Error(`A resource named "${trimmed}" already exists`)
+    }
+
+    const instances = items.filter((i) => matchesResourceName(i, resourceType, oldName))
+    if (instances.length === 0) throw new Error(`Resource not found: ${oldName}`)
+
+    const seen = new Set<string>()
+    for (const item of instances) {
+      switch (resourceType) {
+        case 'skill':
+          await this.renameSkillInstance(item as SkillResource, trimmed, seen)
+          break
+        case 'rule':
+          await this.renameRuleInstance(item as RuleResource, oldName, trimmed, seen)
+          break
+        case 'hook':
+          await this.renameHookInstance(item as HookResource, oldName, trimmed, seen)
+          break
+        case 'subAgent':
+          await this.renameSubAgentInstance(item as SubAgentResource, trimmed, seen)
+          break
+      }
+    }
+
+    this.migrateSettingsKeys(resourceType, oldName, trimmed)
+  }
+
+  private async renameSkillInstance(
+    skill: SkillResource,
+    newName: string,
+    seen: Set<string>
+  ): Promise<void> {
+    const oldRoot = skill.rootPath
+    if (seen.has(oldRoot)) return
+    seen.add(oldRoot)
+
+    const parent = dirname(oldRoot)
+    const newRoot = join(parent, newName)
+    if (existsSync(oldRoot)) {
+      await fileService.renamePath(oldRoot, newRoot)
+    }
+
+    const skillMd = join(newRoot, 'SKILL.md')
+    if (existsSync(skillMd)) {
+      const text = await fileService.readText(skillMd)
+      const { frontmatter, body } = parseFrontmatter(text)
+      frontmatter.name = newName
+      const fmLines = Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`)
+      await fileService.writeText(skillMd, `---\n${fmLines.join('\n')}\n---\n${body}`)
+    }
+  }
+
+  private async renameRuleInstance(
+    rule: RuleResource,
+    oldDisplayName: string,
+    newDisplayName: string,
+    seen: Set<string>
+  ): Promise<void> {
+    if (seen.has(rule.filePath)) return
+    seen.add(rule.filePath)
+
+    const newBase = ruleBaseName(newDisplayName)
+    const dir = dirname(rule.filePath)
+    const ext = rule.filePath.endsWith('.mdc') ? '.mdc' : '.md'
+    const newPath = join(dir, `${newBase}${ext}`)
+
+    if (existsSync(rule.filePath)) {
+      await fileService.renamePath(rule.filePath, newPath)
+    }
+  }
+
+  private async renameSubAgentInstance(
+    agent: SubAgentResource,
+    newName: string,
+    seen: Set<string>
+  ): Promise<void> {
+    if (seen.has(agent.filePath)) return
+    seen.add(agent.filePath)
+
+    const dir = dirname(agent.filePath)
+    const newPath = join(dir, `${newName}.md`)
+
+    if (existsSync(agent.filePath)) {
+      await fileService.renamePath(agent.filePath, newPath)
+    }
+
+    if (existsSync(newPath)) {
+      const text = await fileService.readText(newPath)
+      const { frontmatter, body } = parseFrontmatter(text)
+      frontmatter.name = newName
+      const fmLines = Object.entries(frontmatter).map(([k, v]) => `${k}: ${v}`)
+      await fileService.writeText(newPath, `---\n${fmLines.join('\n')}\n---\n${body}`)
+    }
+  }
+
+  private async renameHookInstance(
+    hook: HookResource,
+    _oldName: string,
+    newName: string,
+    seen: Set<string>
+  ): Promise<void> {
+    const configKey = hook.configPath
+    if (seen.has(configKey)) return
+    seen.add(configKey)
+
+    const oldCommand = String(hook.definition.command ?? '')
+    const oldScriptBase = basename(oldCommand)
+
+    let newEvent = hook.event
+    let newScriptBase: string
+    if (newName.includes(':')) {
+      const [evt, script] = newName.split(':', 2)
+      newEvent = evt
+      newScriptBase = script
+    } else {
+      const ext = oldScriptBase.includes('.')
+        ? oldScriptBase.slice(oldScriptBase.indexOf('.'))
+        : '.sh'
+      newScriptBase = `${newName}${ext}`
+    }
+
+    const newCommand = oldCommand.includes('/')
+      ? join(dirname(oldCommand), newScriptBase).replace(/\\/g, '/')
+      : `hooks/${newScriptBase}`
+
+    if (!existsSync(hook.configPath)) return
+    const raw = await fileService.readText(hook.configPath)
+    const parsed = JSON.parse(raw) as {
+      hooks?: Record<string, Array<Record<string, unknown>>>
+    }
+    parsed.hooks ??= {}
+
+    const oldEntries = parsed.hooks[hook.event] ?? []
+    const remaining: Array<Record<string, unknown>> = []
+    let updatedEntry: Record<string, unknown> | null = null
+
+    for (const entry of oldEntries) {
+      if (String(entry.command ?? '') === oldCommand) {
+        updatedEntry = { ...entry, command: newCommand }
+      } else {
+        remaining.push(entry)
+      }
+    }
+
+    if (!updatedEntry) return
+
+    if (remaining.length === 0) {
+      delete parsed.hooks[hook.event]
+    } else {
+      parsed.hooks[hook.event] = remaining
+    }
+
+    parsed.hooks[newEvent] = [...(parsed.hooks[newEvent] ?? []), updatedEntry]
+    await fileService.writeText(hook.configPath, JSON.stringify(parsed, null, 2))
+
+    if (hook.scriptPath && existsSync(hook.scriptPath)) {
+      const scriptDir = dirname(hook.scriptPath)
+      const newScriptPath = join(scriptDir, newScriptBase)
+      if (hook.scriptPath !== newScriptPath) {
+        await fileService.renamePath(hook.scriptPath, newScriptPath)
+      }
+    }
+  }
+
+  private migrateSettingsKeys(
+    resourceType: 'skill' | 'rule' | 'hook' | 'subAgent',
+    oldName: string,
+    newName: string
+  ): void {
+    const mandatoryKey = MANDATORY_KEY[resourceType]
+    settingsStore.update((s) => {
+      const mandatory = { ...(s.mandatoryForAllProjects?.[mandatoryKey] ?? {}) }
+      if (mandatory[oldName] !== undefined) {
+        mandatory[newName] = mandatory[oldName]
+        delete mandatory[oldName]
+      }
+
+      let resourceCategories = s.resourceCategories
+      if (resourceType === 'skill' || resourceType === 'rule') {
+        const catKey = CATEGORY_KEY[resourceType]
+        const cats = { ...(s.resourceCategories?.[catKey] ?? {}) }
+        if (cats[oldName] !== undefined) {
+          cats[newName] = cats[oldName]
+          delete cats[oldName]
+        }
+        resourceCategories = { ...s.resourceCategories, [catKey]: cats }
+      }
+
+      return {
+        ...s,
+        mandatoryForAllProjects: {
+          ...s.mandatoryForAllProjects,
+          [mandatoryKey]: mandatory
+        },
+        resourceCategories
+      }
+    })
   }
 
   async syncMandatoryForNewProjects(newProjectIds: string[]): Promise<void> {

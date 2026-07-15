@@ -121,6 +121,12 @@ export function PlatformsTab({ settings, onChange }: PlatformsTabProps) {
   }
 
   const savePlatforms = async () => {
+    const confirmed = await showMessage({
+      message: 'Save platform settings?',
+      confirm: true
+    })
+    if (!confirmed) return
+
     const next = { ...settings, platforms }
     await window.agentManager.saveSettings(next)
     onChange(next)

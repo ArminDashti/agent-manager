@@ -22,8 +22,7 @@ export interface AgentManagerApi {
   getSettings: () => Promise<AppSettings>
   saveSettings: (settings: AppSettings) => Promise<AppSettings>
   resetSettings: () => Promise<AppSettings>
-  getPat: () => Promise<string>
-  setPat: (token: string) => Promise<boolean>
+  validatePat: (pat: string) => Promise<{ valid: boolean; login?: string }>
   scanAll: () => Promise<ScanResult>
   discoverProjects: (scanPath: string) => Promise<ScanResult['skills']>
   readFile: (path: string) => Promise<string>
@@ -52,6 +51,11 @@ export interface AgentManagerApi {
     resourceType: 'skill' | 'rule',
     resourceName: string,
     category: string
+  ) => Promise<boolean>
+  renameResource: (
+    resourceType: 'skill' | 'rule' | 'hook' | 'subAgent',
+    oldName: string,
+    newName: string
   ) => Promise<boolean>
   deleteResource: (resourceType: Exclude<ResourceType, 'mcp'>, resourceName: string) => Promise<boolean>
   createResource: (
@@ -87,8 +91,7 @@ const api: AgentManagerApi = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   resetSettings: () => ipcRenderer.invoke('settings:reset'),
-  getPat: () => ipcRenderer.invoke('pat:get'),
-  setPat: (token) => ipcRenderer.invoke('pat:set', token),
+  validatePat: (pat) => ipcRenderer.invoke('github:validatePat', pat),
   scanAll: () => ipcRenderer.invoke('scan:all'),
   discoverProjects: (scanPath) => ipcRenderer.invoke('scan:projects', scanPath),
   readFile: (path) => ipcRenderer.invoke('file:read', path),
@@ -106,6 +109,8 @@ const api: AgentManagerApi = {
     ipcRenderer.invoke('assign:setMandatory', type, name, mandatory),
   setResourceCategory: (type, name, category) =>
     ipcRenderer.invoke('resource:setCategory', type, name, category),
+  renameResource: (type, oldName, newName) =>
+    ipcRenderer.invoke('resource:rename', type, oldName, newName),
   deleteResource: (type, name) => ipcRenderer.invoke('resource:delete', type, name),
   createResource: (type, name, ids) => ipcRenderer.invoke('resource:create', type, name, ids),
   getCanonicalResource: (type, name) => ipcRenderer.invoke('resource:getCanonical', type, name),

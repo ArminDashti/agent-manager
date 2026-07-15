@@ -10,6 +10,25 @@ import { applyStartupSetting } from './services/startup.service'
 
 let mainWindow: BrowserWindow | null = null
 
+async function migratePatFromKeytar(): Promise<void> {
+  const settings = settingsStore.get()
+  if (settings.github?.pat) return
+
+  try {
+    const keytar = require('keytar') as typeof import('keytar')
+    const pat = await keytar.getPassword('agent-manager', 'github-pat')
+    if (pat) {
+      settingsStore.update((s) => ({
+        ...s,
+        github: { ...s.github, pat, patValid: false, patValidatedAt: null }
+      }))
+      await keytar.deletePassword('agent-manager', 'github-pat')
+    }
+  } catch {
+    // keytar unavailable
+  }
+}
+
 function createWindow(): void {
   const settings = settingsStore.load()
   ensurePortableLayout()
@@ -54,10 +73,12 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
   registerIpc()
-  const settings = settingsStore.load()
+  settingsStore.load()
+  await migratePatFromKeytar()
+  const settings = settingsStore.get()
   applyStartupSetting(settings.startup?.runOnLogin ?? false)
   createWindow()
   startFileWatcher()

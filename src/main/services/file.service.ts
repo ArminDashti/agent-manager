@@ -92,6 +92,13 @@ export class FileService {
     const info = await stat(filePath)
     return info.mtimeMs
   }
+
+  async renamePath(from: string, to: string): Promise<void> {
+    if (!existsSync(from)) return
+    await mkdir(dirname(to), { recursive: true })
+    const { rename } = await import('fs/promises')
+    await rename(from, to)
+  }
 }
 
 export const fileService = new FileService()

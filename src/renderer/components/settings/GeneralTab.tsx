@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AppSettings } from '@shared/types'
+import { isValidGithubUrl } from '@shared/utils.browser'
 import { useAppStore } from '@renderer/stores/appStore'
 import { showMessage } from '@renderer/stores/messageStore'
+import { cn } from '@renderer/lib/utils'
 
 interface GeneralTabProps {
   settings: AppSettings
@@ -10,31 +12,39 @@ interface GeneralTabProps {
 
 export function GeneralTab({ settings, onChange }: GeneralTabProps) {
   const { loadSettings } = useAppStore()
-  const [pat, setPat] = useState('')
+  const [pat, setPat] = useState(settings.github?.pat ?? '')
   const [hubBase, setHubBase] = useState(settings.hub.baseUrl)
   const [runOnLogin, setRunOnLogin] = useState(settings.startup?.runOnLogin ?? false)
   const [syncEnabled, setSyncEnabled] = useState(settings.sync?.enabled ?? true)
   const [syncInterval, setSyncInterval] = useState(settings.sync?.intervalMinutes ?? 30)
 
   useEffect(() => {
-    void window.agentManager.getPat().then(setPat)
-  }, [])
-
-  useEffect(() => {
+    setPat(settings.github?.pat ?? '')
     setHubBase(settings.hub.baseUrl)
     setRunOnLogin(settings.startup?.runOnLogin ?? false)
     setSyncEnabled(settings.sync?.enabled ?? true)
     setSyncInterval(settings.sync?.intervalMinutes ?? 30)
   }, [settings])
 
-  const savePat = async () => {
-    await window.agentManager.setPat(pat)
-    await showMessage({ message: 'PAT saved', type: 'success' })
-  }
+  const patValid = settings.github?.patValid ?? false
+  const hubUrlValid = isValidGithubUrl(hubBase)
 
   const saveGeneral = async () => {
+    const confirmed = await showMessage({
+      message: 'Save general settings?',
+      confirm: true
+    })
+    if (!confirmed) return
+
+    const validation = pat.trim() ? await window.agentManager.validatePat(pat) : { valid: false }
+
     const next: AppSettings = {
       ...settings,
+      github: {
+        pat: pat.trim(),
+        patValid: validation.valid,
+        patValidatedAt: validation.valid ? new Date().toISOString() : null
+      },
       startup: { runOnLogin },
       hub: {
         ...settings.hub,
@@ -76,9 +86,11 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
           placeholder="ghp_…"
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm"
         />
-        <button type="button" onClick={() => void savePat()} className="px-4 py-2 text-sm bg-zinc-800 rounded">
-          Save PAT
-        </button>
+        {patValid ? (
+          <p className="text-xs text-emerald-500">PAT validated</p>
+        ) : (
+          <p className="text-xs text-zinc-500">Save to validate your PAT</p>
+        )}
       </section>
 
       <section className="space-y-3">
@@ -88,7 +100,12 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
           onChange={(e) => setHubBase(e.target.value)}
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm"
         />
-        <button type="button" onClick={() => void fetchHub()} className="px-4 py-2 text-sm bg-zinc-800 rounded">
+        <button
+          type="button"
+          onClick={() => void fetchHub()}
+          disabled={!hubUrlValid}
+          className="px-4 py-2 text-sm bg-zinc-800 rounded disabled:opacity-40"
+        >
           Fetch Hub
         </button>
       </section>
@@ -108,16 +125,25 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
         </label>
       </section>
 
-      <section className="space-y-3">
+      <section
+        className={cn(
+          'space-y-3 rounded-lg border border-zinc-800 p-4',
+          !patValid && 'opacity-50 pointer-events-none'
+        )}
+      >
         <h3 className="text-sm font-medium text-zinc-400 uppercase">GitHub Sync</h3>
         <p className="text-xs text-zinc-500">
           Periodically pull from and push to the Git backup repository.
         </p>
+        {!patValid && (
+          <p className="text-xs text-amber-500">Save a valid GitHub PAT to enable sync</p>
+        )}
         <label className="flex items-center gap-2 text-sm text-zinc-300">
           <input
             type="checkbox"
             checked={syncEnabled}
             onChange={(e) => setSyncEnabled(e.target.checked)}
+            disabled={!patValid}
           />
           Enable automatic sync
         </label>
@@ -128,7 +154,8 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
             min={1}
             value={syncInterval}
             onChange={(e) => setSyncInterval(Number(e.target.value))}
-            className="w-24 bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm"
+            disabled={!patValid}
+            className="w-24 bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm disabled:opacity-40"
           />
         </div>
         {settings.sync?.lastSyncAt && (

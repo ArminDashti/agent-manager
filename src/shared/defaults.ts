@@ -15,6 +15,11 @@ export function createDefaultSettings(): AppSettings {
     dataPath: './data',
     platforms,
     projectRoots: [],
+    github: {
+      pat: '',
+      patValid: false,
+      patValidatedAt: null
+    },
     repoBank: {
       url: '',
       localClonePath: './data/repo-bank',
@@ -49,7 +54,8 @@ export function createDefaultSettings(): AppSettings {
     resourceCategories: {
       skills: {},
       rules: {}
-    }
+    },
+    uiFilters: {}
   }
 }
 

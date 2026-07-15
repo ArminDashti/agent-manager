@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectMatrixRow, ResourceType } from '@shared/types'
 import { ResourceSubViewHeader } from './ResourceListView'
 import { ResourceTable } from './ResourceTable'
+import { showMessage } from '@renderer/stores/messageStore'
 
 type ListableResourceType = Exclude<ResourceType, 'mcp'>
 
@@ -23,6 +24,7 @@ export function ResourceAssignView({
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const allCheckboxRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,6 +50,15 @@ export function ResourceAssignView({
     [rows, sortDir]
   )
 
+  const allSelected = rows.length > 0 && selected.size === rows.length
+  const someSelected = selected.size > 0 && selected.size < rows.length
+
+  useEffect(() => {
+    if (allCheckboxRef.current) {
+      allCheckboxRef.current.indeterminate = someSelected
+    }
+  }, [someSelected])
+
   const toggle = (projectId: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -57,7 +68,21 @@ export function ResourceAssignView({
     })
   }
 
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(rows.map((r) => r.projectId)))
+    }
+  }
+
   const handleSave = async () => {
+    const confirmed = await showMessage({
+      message: `Save project assignments for "${resourceName}"?`,
+      confirm: true
+    })
+    if (!confirmed) return
+
     setSaving(true)
     try {
       await window.agentManager.applyProjectAssignment(
@@ -65,6 +90,8 @@ export function ResourceAssignView({
         resourceName,
         [...selected]
       )
+      const mandatory = rows.length > 0 && selected.size === rows.length
+      await window.agentManager.setMandatory(resourceType, resourceName, mandatory)
       onSaved?.()
       onBack()
     } finally {
@@ -75,8 +102,17 @@ export function ResourceAssignView({
   const columns = [
     {
       key: 'assigned',
-      label: '',
-      className: 'w-12',
+      label: 'All',
+      className: 'w-16',
+      renderHeader: () => (
+        <input
+          ref={allCheckboxRef}
+          type="checkbox"
+          checked={allSelected}
+          onChange={toggleAll}
+          title="Select all projects"
+        />
+      ),
       render: (row: ProjectMatrixRow) => (
         <input
           type="checkbox"

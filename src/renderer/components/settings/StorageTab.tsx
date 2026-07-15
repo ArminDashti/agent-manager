@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { AppSettings } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 import { showMessage } from '@renderer/stores/messageStore'
@@ -10,8 +11,20 @@ interface StorageTabProps {
 
 export function StorageTab({ settings, onChange }: StorageTabProps) {
   const { loadSettings } = useAppStore()
+  const [repoUrl, setRepoUrl] = useState(settings.repoBank.url)
+  const patValid = settings.github?.patValid ?? false
 
-  const saveRepoUrl = async (repoUrl: string) => {
+  useEffect(() => {
+    setRepoUrl(settings.repoBank.url)
+  }, [settings.repoBank.url])
+
+  const saveStorage = async () => {
+    const confirmed = await showMessage({
+      message: 'Save storage settings?',
+      confirm: true
+    })
+    if (!confirmed) return
+
     const next = {
       ...settings,
       repoBank: { ...settings.repoBank, url: repoUrl }
@@ -19,7 +32,7 @@ export function StorageTab({ settings, onChange }: StorageTabProps) {
     await window.agentManager.saveSettings(next)
     onChange(next)
     await loadSettings()
-    await showMessage({ message: 'Git backup URL saved', type: 'success' })
+    await showMessage({ message: 'Storage settings saved', type: 'success' })
   }
 
   const fetchBank = async () => {
@@ -54,22 +67,39 @@ export function StorageTab({ settings, onChange }: StorageTabProps) {
           Personal Git repository for backing up and syncing your agent resources.
         </p>
         <input
-          defaultValue={settings.repoBank.url}
-          onBlur={(e) => void saveRepoUrl(e.target.value)}
+          value={repoUrl}
+          onChange={(e) => setRepoUrl(e.target.value)}
           placeholder="https://github.com/user/repo.git"
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm"
         />
         <div className="flex gap-2">
-          <button type="button" onClick={() => void fetchBank()} className="px-4 py-2 text-sm bg-zinc-800 rounded">
+          <button
+            type="button"
+            onClick={() => void fetchBank()}
+            disabled={!patValid}
+            className="px-4 py-2 text-sm bg-zinc-800 rounded disabled:opacity-40"
+          >
             Pull latest
           </button>
-          <button type="button" onClick={() => void commitPush()} className="px-4 py-2 text-sm bg-blue-600 rounded">
+          <button
+            type="button"
+            onClick={() => void commitPush()}
+            disabled={!patValid}
+            className="px-4 py-2 text-sm bg-blue-600 rounded disabled:opacity-40"
+          >
             Commit &amp; push backup
           </button>
         </div>
+        {!patValid && (
+          <p className="text-xs text-amber-500">Save a valid GitHub PAT in General settings first</p>
+        )}
       </section>
 
       <ProjectImportSection settings={settings} onChange={onChange} />
+
+      <button type="button" onClick={() => void saveStorage()} className="px-4 py-2 text-sm bg-emerald-700 rounded">
+        Save storage settings
+      </button>
     </div>
   )
 }
