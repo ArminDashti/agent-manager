@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { ResourceGroupSummary, UiFilterState } from '@shared/types'
 import { CURSOR_HOOK_EVENTS, hookEventSortIndex } from '@shared/hook-events'
 import { formatDateWithRelative } from '@shared/utils.browser'
-import { Download, Trash2 } from 'lucide-react'
+import { Download, Sparkles, Trash2 } from 'lucide-react'
 import { ResourceTable } from './ResourceTable'
-import { ResourceListToolbar, type ResourceFilter } from './ResourceListToolbar'
+import { ResourceListToolbar } from './ResourceListToolbar'
+import { OpenRouterRefactorModal } from './OpenRouterRefactorModal'
 import { useAppStore } from '@renderer/stores/appStore'
 import { ALL_PROJECTS_KEY } from './ProjectFilterDropdown'
 
@@ -23,6 +24,7 @@ interface HooksListViewProps {
 function buildHookColumns(
   onAssign: (name: string) => void,
   onDelete: (name: string) => void,
+  onRefactor: (name: string) => void,
   onRename?: (oldName: string, newName: string) => Promise<void>
 ) {
   const stopProp = (e: React.MouseEvent) => e.stopPropagation()
@@ -103,6 +105,24 @@ function buildHookColumns(
       )
     },
     {
+      key: 'refactor',
+      label: '',
+      className: 'w-20',
+      render: (row: ResourceGroupSummary) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            stopProp(e)
+            onRefactor(row.name)
+          }}
+          className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-violet-400"
+          title="Refactor by OpenRouter"
+        >
+          <Sparkles size={14} />
+        </button>
+      )
+    },
+    {
       key: 'delete',
       label: '',
       className: 'w-20',
@@ -135,7 +155,8 @@ export function HooksListView({
   onDelete
 }: HooksListViewProps) {
   const { settings } = useAppStore()
-  const { search, filter, selectedProjectId, sortKey, sortDir } = filterState
+  const [refactorTarget, setRefactorTarget] = useState<string | null>(null)
+  const { search, hideSingleProject, selectedProjectId, sortKey, sortDir } = filterState
 
   const projects = useMemo(
     () => settings?.projectRoots.flatMap((r) => r.projects).sort((a, b) => a.name.localeCompare(b.name)) ?? [],
@@ -151,8 +172,8 @@ export function HooksListView({
     if (selectedProjectId !== ALL_PROJECTS_KEY) {
       rows = rows.filter((r) => r.assignedProjectIds.includes(selectedProjectId))
     }
-    if (filter === 'single-project') {
-      rows = rows.filter((r) => r.usedProjectCount === 1)
+    if (hideSingleProject) {
+      rows = rows.filter((r) => r.usedProjectCount !== 1)
     }
     return [...rows].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1
@@ -165,7 +186,7 @@ export function HooksListView({
       }
       return a.name.localeCompare(b.name) * dir
     })
-  }, [summaries, search, filter, selectedProjectId, sortKey, sortDir])
+  }, [summaries, search, hideSingleProject, selectedProjectId, sortKey, sortDir])
 
   const sections = useMemo(() => {
     const grouped = new Map<string, ResourceGroupSummary[]>()
@@ -188,7 +209,7 @@ export function HooksListView({
   }, [filtered])
 
   const columns = useMemo(
-    () => buildHookColumns(onAssign, onDelete, onRename),
+    () => buildHookColumns(onAssign, onDelete, setRefactorTarget, onRename),
     [onAssign, onDelete, onRename]
   )
 
@@ -201,7 +222,7 @@ export function HooksListView({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       <header className="px-4 py-3 border-b border-zinc-800">
         <h2 className="text-lg font-medium">Hooks</h2>
         <p className="text-xs text-zinc-500 mt-0.5">Cursor only</p>
@@ -209,8 +230,8 @@ export function HooksListView({
       <ResourceListToolbar
         search={search}
         onSearchChange={(value) => onFilterChange({ search: value })}
-        filter={filter as ResourceFilter}
-        onFilterChange={(value) => onFilterChange({ filter: value })}
+        hideSingleProject={hideSingleProject}
+        onHideSingleProjectChange={(value) => onFilterChange({ hideSingleProject: value })}
         onAdd={onAdd}
         showProjectFilter
         projects={projects}
@@ -222,7 +243,7 @@ export function HooksListView({
       ) : sections.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">No hooks found</div>
       ) : (
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-auto">
           {sections.map(({ event, rows }) => (
             <section key={event} className="border-b border-zinc-800 last:border-b-0">
               <div className="px-4 py-2 bg-zinc-900/50 sticky top-0 z-10">
@@ -240,6 +261,13 @@ export function HooksListView({
             </section>
           ))}
         </div>
+      )}
+      {refactorTarget && (
+        <OpenRouterRefactorModal
+          resourceType="hook"
+          resourceName={refactorTarget}
+          onClose={() => setRefactorTarget(null)}
+        />
       )}
     </div>
   )

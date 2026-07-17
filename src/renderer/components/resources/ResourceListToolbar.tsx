@@ -2,13 +2,11 @@ import { CategoryFilterDropdown } from './CategoryFilterDropdown'
 import { ProjectFilterDropdown } from './ProjectFilterDropdown'
 import type { ProjectInfo } from '@shared/types'
 
-export type ResourceFilter = 'all' | 'single-project'
-
 interface ResourceListToolbarProps {
   search: string
   onSearchChange: (value: string) => void
-  filter: ResourceFilter
-  onFilterChange: (value: ResourceFilter) => void
+  hideSingleProject: boolean
+  onHideSingleProjectChange: (value: boolean) => void
   onAdd?: () => void
   addLabel?: string
   selectedCategories?: Set<string>
@@ -23,8 +21,8 @@ interface ResourceListToolbarProps {
 export function ResourceListToolbar({
   search,
   onSearchChange,
-  filter,
-  onFilterChange,
+  hideSingleProject,
+  onHideSingleProjectChange,
   onAdd,
   addLabel = 'Add',
   selectedCategories,
@@ -36,7 +34,7 @@ export function ResourceListToolbar({
   showProjectFilter = false
 }: ResourceListToolbarProps) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 flex-wrap">
       <input
         type="search"
         value={search}
@@ -58,14 +56,15 @@ export function ResourceListToolbar({
           onChange={onCategoryFilterChange}
         />
       )}
-      <select
-        value={filter}
-        onChange={(e) => onFilterChange(e.target.value as ResourceFilter)}
-        className="bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-300"
-      >
-        <option value="all">All</option>
-        <option value="single-project">Using for only one project</option>
-      </select>
+      <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer select-none whitespace-nowrap">
+        <input
+          type="checkbox"
+          checked={hideSingleProject}
+          onChange={(e) => onHideSingleProjectChange(e.target.checked)}
+          className="rounded border-zinc-600 bg-zinc-900"
+        />
+        Hide resources used in only one project
+      </label>
       {onAdd && (
         <button
           type="button"

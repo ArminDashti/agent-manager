@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { cn } from '@renderer/lib/utils'
 
 export interface TableColumn<T> {
@@ -30,8 +31,32 @@ export function ResourceTable<T>({
   onRowClick,
   emptyMessage = 'No items found'
 }: ResourceTableProps<T>) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // #region agent log
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const parent = el.parentElement
+    const data = {
+      rowCount: rows.length,
+      clientHeight: el.clientHeight,
+      scrollHeight: el.scrollHeight,
+      canScroll: el.scrollHeight > el.clientHeight + 1,
+      parentClientHeight: parent?.clientHeight ?? null,
+      parentScrollHeight: parent?.scrollHeight ?? null,
+      parentOverflow: parent ? getComputedStyle(parent).overflow : null,
+      elOverflow: getComputedStyle(el).overflow,
+      elMinHeight: getComputedStyle(el).minHeight,
+      runId: 'post-fix'
+    }
+    void window.agentManager.debugLog('C', 'ResourceTable.tsx:layout', 'table scroll metrics', data)
+    fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceTable.tsx:layout',message:'table scroll metrics',data,timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{})
+  }, [rows])
+  // #endregion
+
   return (
-    <div className="overflow-auto flex-1">
+    <div ref={scrollRef} className="overflow-auto flex-1 min-h-0">
       <table className="w-full text-sm border-collapse">
         <thead className="sticky top-0 bg-zinc-950 z-10">
           <tr className="border-b border-zinc-800 text-left text-zinc-400">

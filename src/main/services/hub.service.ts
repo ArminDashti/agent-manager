@@ -7,7 +7,6 @@ import { HUB_TYPE_FOLDERS } from '@shared/utils'
 import { getDataPath } from '../app-paths'
 import { fileService } from './file.service'
 import { settingsStore } from './settings-store'
-import { cacheService } from './cache.service'
 
 const DEFAULT_FILES: Record<HubResourceType, string[]> = {
   skill: ['SKILL.md'],
@@ -120,10 +119,6 @@ export class HubService {
 
     if (!existsSync(src)) {
       await this.fetchResource(type, name)
-    }
-
-    if (type === 'skill' || type === 'rule' || type === 'hook') {
-      await cacheService.installFromHubCache(type, name, src)
     }
 
     if (type === 'skill') {

@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import type { McpResource, McpTool } from '@shared/types'
+import { agentDebugLog } from './debug-log'
 
 const PROBE_TIMEOUT_MS = 5000
 const MAX_CONCURRENT = 3
@@ -123,6 +124,17 @@ async function runWithConcurrency<T>(
 export async function probeMcpServers(
   servers: Array<{ name: string; params: Record<string, unknown> }>
 ): Promise<Map<string, ProbeResult>> {
+  // #region agent log
+  const probeStartedAt = Date.now()
+  const stdioCount = servers.filter((s) => hasStdioTransport(s.params)).length
+  agentDebugLog('A', 'mcp-probe.service.ts:probeMcpServers:start', 'MCP probe started', {
+    serverCount: servers.length,
+    stdioCount,
+    maxConcurrent: MAX_CONCURRENT,
+    timeoutMs: PROBE_TIMEOUT_MS
+  })
+  // #endregion
+
   const results = new Map<string, ProbeResult>()
 
   const tasks = servers.map((server) => async () => {
@@ -140,5 +152,14 @@ export async function probeMcpServers(
   for (const { name, result } of probed) {
     results.set(name, result)
   }
+
+  // #region agent log
+  agentDebugLog('A', 'mcp-probe.service.ts:probeMcpServers:end', 'MCP probe finished', {
+    durationMs: Date.now() - probeStartedAt,
+    serverCount: servers.length,
+    stdioCount
+  })
+  // #endregion
+
   return results
 }

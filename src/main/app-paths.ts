@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { cpSync, existsSync, mkdirSync, copyFileSync, readdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
 import { join } from 'path'
 
 let appRoot: string | null = null
@@ -31,10 +31,6 @@ export function ensurePortableLayout(): void {
     'data/hub-cache/hooks',
     'data/hub-cache/tools',
     'data/repo-bank',
-    'caches/skills',
-    'caches/hooks',
-    'caches/rules',
-    'caches/agents',
     'mcps',
     'logos'
   ]
@@ -46,31 +42,7 @@ export function ensurePortableLayout(): void {
     }
   }
 
-  migrateMdFilesToCaches(root)
   seedLogos(root)
-}
-
-function migrateMdFilesToCaches(root: string): void {
-  const legacy = join(root, 'md-files')
-  const caches = join(root, 'caches')
-  if (!existsSync(legacy) || !existsSync(caches)) return
-
-  const legacyHasContent = readdirSync(legacy).length > 0
-  const cachesEmpty =
-    ['skills', 'hooks', 'rules', 'agents'].every((sub) => {
-      const dir = join(caches, sub)
-      return !existsSync(dir) || readdirSync(dir).length === 0
-    }) && readdirSync(caches).every((name) => ['skills', 'hooks', 'rules', 'agents'].includes(name))
-
-  if (!legacyHasContent || !cachesEmpty) return
-
-  for (const sub of ['skills', 'hooks', 'rules']) {
-    const src = join(legacy, sub)
-    const dest = join(caches, sub)
-    if (existsSync(src)) {
-      cpSync(src, dest, { recursive: true })
-    }
-  }
 }
 
 function seedLogos(root: string): void {
@@ -100,8 +72,4 @@ export function getLogosPath(): string {
 
 export function getSettingsPath(): string {
   return resolveFromAppRoot('settings.json')
-}
-
-export function getCachesPath(): string {
-  return resolveFromAppRoot('caches')
 }

@@ -19,7 +19,9 @@ All channels exposed via `window.agentManager` (preload `contextBridge`).
 | `settings:save` | invoke | Save settings |
 | `settings:reset` | invoke | Reset to defaults |
 | `pat:get` / `pat:set` | invoke | GitHub PAT via keytar |
-| `scan:all` | invoke | Full resource scan |
+| `github:validatePat` | invoke | Validate GitHub PAT |
+| `openRouter:refactor` | invoke | Refactor skill/rule/hook/subAgent content via OpenRouter chat completions |
+| `scan:all` | invoke | Full resource scan. Optional `{ probeMcps?: boolean }` — MCP process probing is off by default (expensive); enable on MCPs page |
 | `scan:projects` | invoke | Discover `.git` projects under path |
 | `file:read` / `file:write` | invoke | Local file I/O |
 | `file:listDir` | invoke | Recursive file list (scanner use only) |

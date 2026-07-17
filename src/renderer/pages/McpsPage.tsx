@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { JsonEditor } from '@renderer/components/JsonEditor'
 import { ResourceTable } from '@renderer/components/resources/ResourceTable'
@@ -34,6 +34,10 @@ export function McpsPage() {
   const [addName, setAddName] = useState('')
   const [paramsJson, setParamsJson] = useState('')
 
+  useEffect(() => {
+    void refreshScan({ probeMcps: true })
+  }, [refreshScan])
+
   const mcps = useMemo(() => {
     const map = new Map<string, McpResource>()
     for (const m of scan?.mcps ?? []) {
@@ -62,7 +66,7 @@ export function McpsPage() {
     })
     if (!confirmed) return
     await window.agentManager.deleteMcp(mcp.name, mcp.configPath)
-    await refreshScan()
+    await refreshScan({ probeMcps: true })
   }
 
   const handleAdd = async () => {
@@ -75,7 +79,7 @@ export function McpsPage() {
       await window.agentManager.addMcp(addName.trim(), params)
       setAddOpen(false)
       setAddName('')
-      await refreshScan()
+      await refreshScan({ probeMcps: true })
     } catch (e) {
       await showMessage({
         message: e instanceof Error ? e.message : 'Invalid JSON',
@@ -99,7 +103,7 @@ export function McpsPage() {
       config.mcpServers[selected.name] = toSave
       await window.agentManager.writeFile(selected.configPath, JSON.stringify(config, null, 2))
       setParamsJson(JSON.stringify(toSave, null, 2))
-      await refreshScan()
+      await refreshScan({ probeMcps: true })
     } catch (e) {
       await showMessage({
         message: e instanceof Error ? e.message : 'Invalid JSON',
@@ -137,14 +141,19 @@ export function McpsPage() {
             />
           </div>
 
-          <div className="shrink-0">
+          <div className="shrink-0 max-h-48 overflow-auto">
             <h4 className="text-sm font-medium mb-2">Tools</h4>
             {selected.tools.length === 0 ? (
               <p className="text-sm text-zinc-500">No cached tools (status: {selected.status})</p>
             ) : (
-              <ul className="text-sm space-y-1">
+              <ul className="text-sm space-y-2">
                 {selected.tools.map((t) => (
-                  <li key={t.name}>{t.name}</li>
+                  <li key={t.name} className="border-b border-zinc-800/80 pb-2 last:border-0">
+                    <div className="font-medium text-zinc-200">{t.name}</div>
+                    <div className="text-zinc-500 text-xs mt-0.5">
+                      {t.description?.trim() || '—'}
+                    </div>
+                  </li>
                 ))}
               </ul>
             )}
@@ -167,6 +176,13 @@ export function McpsPage() {
         <span className={cn('text-xs px-2 py-0.5 rounded', statusBadgeClass(row.status))}>
           {row.status}
         </span>
+      )
+    },
+    {
+      key: 'tools',
+      label: 'Tools',
+      render: (row: McpResource) => (
+        <span className="text-zinc-400">{row.tools.length}</span>
       )
     },
     {

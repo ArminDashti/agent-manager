@@ -59,6 +59,11 @@ function migrateSettings(settings: AppSettings): AppSettings {
     ...(settings.github ?? {})
   }
 
+  merged.openRouter = {
+    ...defaults.openRouter,
+    ...(settings.openRouter ?? {})
+  }
+
   return merged
 }
 

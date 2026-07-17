@@ -23,7 +23,12 @@ export interface AgentManagerApi {
   saveSettings: (settings: AppSettings) => Promise<AppSettings>
   resetSettings: () => Promise<AppSettings>
   validatePat: (pat: string) => Promise<{ valid: boolean; login?: string }>
-  scanAll: () => Promise<ScanResult>
+  openRouterRefactor: (request: {
+    resourceType: 'skill' | 'rule' | 'hook' | 'subAgent'
+    content: string
+    userPrompt: string
+  }) => Promise<{ content: string; model: string }>
+  scanAll: (options?: { probeMcps?: boolean }) => Promise<ScanResult>
   discoverProjects: (scanPath: string) => Promise<ScanResult['skills']>
   readFile: (path: string) => Promise<string>
   writeFile: (path: string, content: string) => Promise<boolean>
@@ -84,6 +89,12 @@ export interface AgentManagerApi {
   maximizeWindow: () => Promise<boolean>
   closeWindow: () => Promise<boolean>
   isWindowMaximized: () => Promise<boolean>
+  debugLog: (
+    hypothesisId: string,
+    location: string,
+    message: string,
+    data?: Record<string, unknown>
+  ) => Promise<boolean>
 }
 
 const api: AgentManagerApi = {
@@ -92,7 +103,8 @@ const api: AgentManagerApi = {
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   resetSettings: () => ipcRenderer.invoke('settings:reset'),
   validatePat: (pat) => ipcRenderer.invoke('github:validatePat', pat),
-  scanAll: () => ipcRenderer.invoke('scan:all'),
+  openRouterRefactor: (request) => ipcRenderer.invoke('openRouter:refactor', request),
+  scanAll: (options) => ipcRenderer.invoke('scan:all', options),
   discoverProjects: (scanPath) => ipcRenderer.invoke('scan:projects', scanPath),
   readFile: (path) => ipcRenderer.invoke('file:read', path),
   writeFile: (path, content) => ipcRenderer.invoke('file:write', path, content),
@@ -130,7 +142,9 @@ const api: AgentManagerApi = {
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
-  isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized')
+  isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  debugLog: (hypothesisId, location, message, data) =>
+    ipcRenderer.invoke('debug:log', hypothesisId, location, message, data ?? {})
 }
 
 contextBridge.exposeInMainWorld('agentManager', api)

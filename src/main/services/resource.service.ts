@@ -3,6 +3,7 @@ import { basename, dirname, join } from 'path'
 import type {
   AppSettings,
   HookResource,
+  ProjectInfo,
   ProjectMatrixRow,
   ResourceGroupSummary,
   ResourceType,
@@ -15,13 +16,14 @@ import type {
 import { CURSOR_ONLY_RESOURCES } from '@shared/types'
 import { ruleBaseName, ruleDisplayName, ruleMatchesDisplayName } from '@shared/rule-names'
 import { isValidResourceName } from '@shared/resource-names'
-import { parseFrontmatter } from '@shared/utils'
+import { parseFrontmatter, defaultCategoryFromName } from '@shared/utils'
 import { fileService } from './file.service'
 import { assignmentService } from './assignment.service'
 import { scannerService } from './scanner.service'
 import { settingsStore } from './settings-store'
 import { repoBankService } from './repo-bank.service'
-import { cacheService } from './cache.service'
+import { getAdapter } from '../platforms'
+import { agentDebugLog } from './debug-log'
 
 type ScannedResource =
   | SkillResource
@@ -245,6 +247,9 @@ export class ResourceService {
     settings: AppSettings,
     resourceType: Exclude<ResourceType, 'mcp'>
   ): Promise<ResourceGroupSummary[]> {
+    // #region agent log
+    const startedAt = Date.now()
+    // #endregion
     const items = filterItems(getItems(scan, resourceType), resourceType)
     const grouped = groupByName(items, resourceType)
     const totalProjects = getAllProjects(settings).length
@@ -256,6 +261,8 @@ export class ResourceService {
         : {}
 
     const summaries: ResourceGroupSummary[] = []
+    const categoriesToPersist: Record<string, string> = {}
+
     for (const [name, instances] of grouped) {
       const canonical = pickCanonical(instances)
       const [tokens, description, ...mtimes] = await Promise.all([
@@ -270,6 +277,15 @@ export class ResourceService {
         .sort()
         .pop() ?? null
 
+      let category = categoryMap[name] ?? ''
+      if (resourceType === 'skill' && !category.trim()) {
+        const derived = defaultCategoryFromName(name)
+        if (derived) {
+          category = derived
+          categoriesToPersist[name] = derived
+        }
+      }
+
       summaries.push({
         name,
         usedProjectCount: countProjectsUsing(instances),
@@ -280,7 +296,7 @@ export class ResourceService {
         mandatory: mandatoryMap[name] ?? false,
         canonicalId: canonical.id,
         description,
-        category: categoryMap[name] ?? '',
+        category,
         event:
           resourceType === 'hook'
             ? (canonical as HookResource).event
@@ -288,7 +304,42 @@ export class ResourceService {
       })
     }
 
-    return summaries.sort((a, b) => a.name.localeCompare(b.name))
+    if (resourceType === 'skill' && Object.keys(categoriesToPersist).length > 0) {
+      settingsStore.update((s) => ({
+        ...s,
+        resourceCategories: {
+          ...s.resourceCategories,
+          skills: {
+            ...(s.resourceCategories?.skills ?? {}),
+            ...categoriesToPersist
+          }
+        }
+      }))
+    }
+
+    const sorted = summaries.sort((a, b) => a.name.localeCompare(b.name))
+    // #region agent log
+    const sourceCounts = { project: 0, local: 0, platform: 0, other: 0 }
+    for (const item of items) {
+      const t = item.source?.type
+      if (t === 'project') sourceCounts.project++
+      else if (t === 'local') sourceCounts.local++
+      else if (t === 'platform') sourceCounts.platform++
+      else sourceCounts.other++
+    }
+    agentDebugLog('A', 'resource.service.ts:getGroupSummaries', 'summaries built', {
+      resourceType,
+      groupCount: grouped.size,
+      itemCount: items.length,
+      summaryCount: sorted.length,
+      sourceCounts,
+      firstNames: sorted.slice(0, 5).map((s) => s.name),
+      lastNames: sorted.slice(-5).map((s) => s.name),
+      durationMs: Date.now() - startedAt,
+      runId: 'post-fix'
+    })
+    // #endregion
+    return sorted
   }
 
   getProjectMatrix(
@@ -498,15 +549,10 @@ export class ResourceService {
     const safeName = name.trim()
     if (!safeName) throw new Error('Name is required')
 
-    await this.writeCacheResource(resourceType, safeName)
     await this.writeRepoBankResource(resourceType, safeName)
 
-    const scan = await scannerService.scanAll(settingsStore.get())
-    const canonical = this.findCanonicalInstance(scan, resourceType, safeName)
-    if (!canonical) throw new Error(`Resource not found after create: ${safeName}`)
-
     for (const project of projects) {
-      await assignmentService.assignToProject(canonical, resourceType, project.id)
+      await this.seedResourceInProject(resourceType, safeName, project)
     }
 
     if (settings.repoBank.url) {
@@ -518,23 +564,45 @@ export class ResourceService {
     }
   }
 
-  private async writeCacheResource(
+  private async seedResourceInProject(
     resourceType: 'skill' | 'rule' | 'hook' | 'subAgent',
-    name: string
+    name: string,
+    project: ProjectInfo
   ): Promise<void> {
-    switch (resourceType) {
-      case 'skill':
-        await cacheService.writeSkill(name, skillTemplate(name))
-        break
-      case 'rule':
-        await cacheService.writeRule(name, ruleTemplate(name))
-        break
-      case 'hook':
-        await cacheService.appendHook(name)
-        break
-      case 'subAgent':
-        await cacheService.writeSubAgent(name, subAgentTemplate(name))
-        break
+    const settings = settingsStore.get()
+    const platforms = CURSOR_ONLY_RESOURCES.includes(resourceType)
+      ? settings.platforms.filter((p) => p.enabled && p.id === 'cursor')
+      : settings.platforms.filter((p) => p.enabled)
+
+    for (const platform of platforms) {
+      const adapter = getAdapter(platform.id)
+      if (!adapter) continue
+      const paths = adapter.getProjectPaths(project.path)
+
+      switch (resourceType) {
+        case 'skill':
+          await fileService.writeText(
+            join(paths.skillsDirs[0], name, 'SKILL.md'),
+            skillTemplate(name)
+          )
+          break
+        case 'rule':
+          await fileService.writeText(join(paths.rulesDir, `${name}.mdc`), ruleTemplate(name))
+          break
+        case 'hook':
+          if (paths.hooksConfigPath) {
+            await this.appendHook(paths.hooksConfigPath, name)
+          }
+          break
+        case 'subAgent':
+          if (paths.agentsDir) {
+            await fileService.writeText(
+              join(paths.agentsDir, `${name}.md`),
+              subAgentTemplate(name)
+            )
+          }
+          break
+      }
     }
   }
 

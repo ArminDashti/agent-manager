@@ -1,5 +1,4 @@
 import type { UiFilterState } from '@shared/types'
-import type { ResourceFilter } from '@renderer/components/resources/ResourceListToolbar'
 import { ALL_PROJECTS_KEY } from '@renderer/components/resources/ProjectFilterDropdown'
 
 export type ListableResourceType = 'skill' | 'rule' | 'hook' | 'subAgent' | 'tool'
@@ -18,21 +17,33 @@ export function filterStorageKey(resourceType: ListableResourceType): string {
 
 export const DEFAULT_UI_FILTER: UiFilterState = {
   search: '',
-  filter: 'all',
+  hideSingleProject: true,
   selectedProjectId: ALL_PROJECTS_KEY,
   selectedCategories: [],
   sortKey: 'name',
   sortDir: 'asc'
 }
 
-export function mergeUiFilter(partial?: Partial<UiFilterState>): UiFilterState {
-  return {
-    ...DEFAULT_UI_FILTER,
-    ...partial,
-    selectedCategories: partial?.selectedCategories ?? DEFAULT_UI_FILTER.selectedCategories
-  }
+type LegacyUiFilter = Partial<UiFilterState> & {
+  filter?: 'all' | 'single-project'
 }
 
-export function toResourceFilter(value: string): ResourceFilter {
-  return value === 'single-project' ? 'single-project' : 'all'
+export function mergeUiFilter(partial?: Partial<UiFilterState> | LegacyUiFilter): UiFilterState {
+  const legacy = (partial ?? {}) as LegacyUiFilter
+  const { filter: legacyFilter, hideSingleProject: explicitHide, ...rest } = legacy
+
+  let hideSingleProject = DEFAULT_UI_FILTER.hideSingleProject
+  if (typeof explicitHide === 'boolean') {
+    hideSingleProject = explicitHide
+  } else if (legacyFilter === 'single-project') {
+    // Old "show only single-project" ⇒ user wants to see singles ⇒ do not hide them
+    hideSingleProject = false
+  }
+
+  return {
+    ...DEFAULT_UI_FILTER,
+    ...rest,
+    hideSingleProject,
+    selectedCategories: rest.selectedCategories ?? DEFAULT_UI_FILTER.selectedCategories
+  }
 }

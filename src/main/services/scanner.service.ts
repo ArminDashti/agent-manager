@@ -15,16 +15,63 @@ import type {
 } from '@shared/types'
 import { parseFrontmatter, stableId } from '@shared/utils'
 import { fileService } from './file.service'
-import { cacheService } from './cache.service'
 import { getAdapter } from '../platforms'
 import type { PlatformAdapter, PlatformPaths } from '../platforms/types'
 import { supportsResource } from '../platforms/types'
 import { probeMcpServers } from './mcp-probe.service'
+import { agentDebugLog } from './debug-log'
 
 const PLATFORM_SCAN_TYPES: ResourceType[] = ['mcp', 'tool']
 
+export interface ScanAllOptions {
+  /** Spawn MCP processes to check connectivity. Expensive; default false. */
+  probeMcps?: boolean
+}
+
 export class ScannerService {
-  async scanAll(settings: AppSettings): Promise<ScanResult> {
+  private inflight: Promise<ScanResult> | null = null
+  private inflightProbe = false
+
+  async scanAll(settings: AppSettings, options: ScanAllOptions = {}): Promise<ScanResult> {
+    const probeMcps = options.probeMcps === true
+
+    // Share one in-flight scan when concurrent callers agree on probe level
+    if (this.inflight && (!probeMcps || this.inflightProbe)) {
+      // #region agent log
+      agentDebugLog('C', 'scanner.service.ts:scanAll:reuse', 'reusing in-flight scanAll', {
+        probeMcps,
+        inflightProbe: this.inflightProbe
+      })
+      // #endregion
+      return this.inflight
+    }
+
+    const run = this.executeScanAll(settings, probeMcps)
+    this.inflight = run
+    this.inflightProbe = probeMcps
+    try {
+      return await run
+    } finally {
+      if (this.inflight === run) {
+        this.inflight = null
+        this.inflightProbe = false
+      }
+    }
+  }
+
+  private async executeScanAll(settings: AppSettings, probeMcps: boolean): Promise<ScanResult> {
+    // #region agent log
+    const scanStartedAt = Date.now()
+    const projectCount = settings.projectRoots.reduce((n, r) => n + r.projects.length, 0)
+    const enabledPlatforms = settings.platforms.filter((p) => p.enabled).length
+    agentDebugLog('E', 'scanner.service.ts:scanAll:start', 'scanAll started', {
+      projectCount,
+      enabledPlatforms,
+      probeMcps,
+      runId: 'post-fix'
+    })
+    // #endregion
+
     const result: ScanResult = {
       skills: [],
       rules: [],
@@ -68,23 +115,34 @@ export class ScannerService {
       }
     }
 
-    const cachePaths = cacheService.getCachePaths()
-    const cacheAdapter = getAdapter('cursor')
-    if (cacheAdapter) {
-      const cacheSource: ResourceSource = {
-        type: 'local',
-        id: 'cache',
-        label: 'Cache'
-      }
-      await this.scanPaths(cacheAdapter, cachePaths, cacheSource, settings, result, [
-        'skill',
-        'rule',
-        'hook',
-        'subAgent'
-      ])
+    // #region agent log
+    const fsScanMs = Date.now() - scanStartedAt
+    agentDebugLog('A', 'scanner.service.ts:scanAll:afterFs', 'filesystem scan done', {
+      fsScanMs,
+      skills: result.skills.length,
+      uniqueSkillNames: [...new Set(result.skills.map((s) => s.name))].length,
+      rules: result.rules.length,
+      mcps: result.mcps.length,
+      hooks: result.hooks.length,
+      subAgents: result.subAgents.length,
+      tools: result.tools.length,
+      probeMcps
+    })
+    // #endregion
+
+    if (probeMcps) {
+      await this.probeMcps(result)
     }
 
-    await this.probeMcps(result)
+    // #region agent log
+    agentDebugLog('A', 'scanner.service.ts:scanAll:end', 'scanAll finished', {
+      totalMs: Date.now() - scanStartedAt,
+      fsScanMs,
+      mcpCount: result.mcps.length,
+      probeMcps,
+      runId: 'post-fix'
+    })
+    // #endregion
 
     return result
   }

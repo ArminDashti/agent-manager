@@ -44,7 +44,7 @@ export function AppLayout({ page, onNavigate, children }: AppLayoutProps) {
 
         />
 
-        <main className="flex-1 overflow-hidden flex flex-col bg-zinc-950">{children}</main>
+        <main className="flex-1 min-h-0 overflow-hidden flex flex-col bg-zinc-950">{children}</main>
 
       </div>
 

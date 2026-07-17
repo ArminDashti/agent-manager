@@ -13,12 +13,16 @@ import { resourceService } from '../services/resource.service'
 import { hubService } from '../services/hub.service'
 import { repoBankService } from '../services/repo-bank.service'
 import { projectBootstrapService } from '../services/project-bootstrap.service'
-import { cacheService } from '../services/cache.service'
 import { startFileWatcher, stopFileWatcher } from '../services/watcher.service'
 import { restartSyncTimer } from '../services/sync.service'
 import { applyStartupSetting } from '../services/startup.service'
 import { validatePat } from '../services/github.service'
+import {
+  refactorWithOpenRouter,
+  type OpenRouterRefactorRequest
+} from '../services/openrouter.service'
 import { getAdapter } from '../platforms'
+import { agentDebugLog } from '../services/debug-log'
 import { v4 as uuidv4 } from 'uuid'
 
 export function registerIpc(): void {
@@ -43,7 +47,28 @@ export function registerIpc(): void {
 
   ipcMain.handle('github:validatePat', async (_e, pat: string) => validatePat(pat))
 
-  ipcMain.handle('scan:all', async () => scannerService.scanAll(settingsStore.get()))
+  ipcMain.handle('openRouter:refactor', async (_e, request: OpenRouterRefactorRequest) =>
+    refactorWithOpenRouter(request)
+  )
+
+  ipcMain.handle('scan:all', async (_e, options?: { probeMcps?: boolean }) => {
+    // #region agent log
+    const startedAt = Date.now()
+    agentDebugLog('B', 'ipc/index.ts:scan:all', 'IPC scan:all invoked', {
+      probeMcps: options?.probeMcps === true,
+      runId: 'post-fix'
+    })
+    // #endregion
+    const result = await scannerService.scanAll(settingsStore.get(), options)
+    // #region agent log
+    agentDebugLog('B', 'ipc/index.ts:scan:all:done', 'IPC scan:all done', {
+      durationMs: Date.now() - startedAt,
+      probeMcps: options?.probeMcps === true,
+      runId: 'post-fix'
+    })
+    // #endregion
+    return result
+  })
 
   ipcMain.handle('scan:projects', async (_e, scanPath: string) =>
     scannerService.discoverGitProjects(scanPath)
@@ -83,9 +108,30 @@ export function registerIpc(): void {
   ipcMain.handle(
     'resource:stats',
     async (_e, resourceType: Exclude<ResourceType, 'mcp'>) => {
+      // #region agent log
+      const startedAt = Date.now()
+      agentDebugLog('B', 'ipc/index.ts:resource:stats', 'IPC resource:stats invoked', {
+        resourceType
+      })
+      // #endregion
       const settings = settingsStore.get()
       const scan = await scannerService.scanAll(settings)
-      return resourceService.getGroupSummaries(scan, settings, resourceType)
+      // #region agent log
+      const afterScanAt = Date.now()
+      // #endregion
+      const summaries = await resourceService.getGroupSummaries(scan, settings, resourceType)
+      // #region agent log
+      agentDebugLog('B', 'ipc/index.ts:resource:stats:done', 'IPC resource:stats done', {
+        resourceType,
+        scanMs: afterScanAt - startedAt,
+        summariesMs: Date.now() - afterScanAt,
+        totalMs: Date.now() - startedAt,
+        summaryCount: summaries.length,
+        scanSkillCount: scan.skills.length,
+        uniqueScanSkillNames: [...new Set(scan.skills.map((s) => s.name))].length
+      })
+      // #endregion
+      return summaries
     }
   )
 
@@ -258,7 +304,6 @@ export function registerIpc(): void {
     }))
 
     const newProjectIds = newProjects.filter((p) => !previousIds.has(p.id)).map((p) => p.id)
-    await cacheService.cacheResourcesFromProjects(newProjectIds)
     await resourceService.syncMandatoryForNewProjects(newProjectIds)
     stopFileWatcher()
     startFileWatcher()
@@ -292,7 +337,6 @@ export function registerIpc(): void {
       projectRoots: [...s.projectRoots, { id, scanPath, projects }]
     }))
     const newProjectIds = projects.filter((p) => !previousIds.has(p.id)).map((p) => p.id)
-    await cacheService.cacheResourcesFromProjects(newProjectIds)
     await resourceService.syncMandatoryForNewProjects(newProjectIds)
     return { id, projects }
   })
@@ -345,6 +389,22 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('window:isMaximized', () => BrowserWindow.getFocusedWindow()?.isMaximized() ?? false)
+
+  // #region agent log
+  ipcMain.handle(
+    'debug:log',
+    (
+      _e,
+      hypothesisId: string,
+      location: string,
+      message: string,
+      data: Record<string, unknown> = {}
+    ) => {
+      agentDebugLog(hypothesisId, location, message, { ...data, runId: 'post-fix' })
+      return true
+    }
+  )
+  // #endregion
 
   ipcMain.handle('logos:getPath', (_e, platformId: string) => {
     const logosDir = getLogosPath()

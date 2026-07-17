@@ -1,0 +1,9 @@
+- always `help` must be in a script.
+- Test and run the script after you create in order to make sure the script will be worked but be careful for scripts might be a more tricky and ask user before run them.
+- always Use `--` for paramters, like --username=<>
+- if user write `--username=<armin>` means the default value is `armin`. `--username=<armin|ramin|Cyrus>` means one of the value is allowd. 
+- sometimes, user propose name for params which might be not standard or professional, you can replace them with a most modern and technical names.
+- Do not use sophiticated scripts
+- progress bar in loading is good
+- colorful result is good
+- for each command must be existed a `help` or if user run those commands and must pass something which they do not, it must render helps for that step.

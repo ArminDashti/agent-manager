@@ -32,11 +32,10 @@ $RepoRoot = $PSScriptRoot
 $ReleaseDir = Join-Path $RepoRoot 'release'
 
 $InstallDirs = @(
-    'caches/skills',
-    'caches/hooks',
-    'caches/rules',
-    'caches/agents',
-    'mcps'
+    'mcps',
+    'logos',
+    'data/hub-cache',
+    'data/repo-bank'
 )
 
 function Show-Help {
@@ -65,7 +64,7 @@ function Show-Help {
     Write-Host "  $ReleaseDir\settings.json"
     Write-Host ''
     Write-Host 'Install layout:' -ForegroundColor Yellow
-    Write-Host '  Janus.exe, settings.json, caches/skills, caches/hooks, caches/rules, caches/agents, mcps/'
+    Write-Host '  Janus.exe, settings.json, mcps/, logos/, data/'
     Write-Host ''
 }
 
@@ -210,4 +209,4 @@ Write-Host ''
 Write-Host 'Install completed successfully.' -ForegroundColor Green
 Write-Host "  Build:   $exePath" -ForegroundColor Green
 Write-Host "  Install: $installDir" -ForegroundColor Green
-Write-Host '  Layout:  Janus.exe, settings.json, caches/*, mcps/' -ForegroundColor Green
+Write-Host '  Layout:  Janus.exe, settings.json, mcps/, logos/, data/' -ForegroundColor Green

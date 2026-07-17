@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "stop": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/post-task-verifier-stop.ps1",
+        "timeout": 10,
+        "loop_limit": 1
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/run-export.ps1",
+        "timeout": 600
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/sync-pinmo.ps1",
+        "timeout": 900
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/export-agent-response.ps1",
+        "timeout": 10
+      }
+    ]
+  }
+}

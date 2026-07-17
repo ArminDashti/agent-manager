@@ -25,7 +25,7 @@ interface AppState {
   setHubItems: (items: HubCatalogItem[]) => void
   loading: boolean
   setLoading: (loading: boolean) => void
-  refreshScan: () => Promise<void>
+  refreshScan: (options?: { probeMcps?: boolean }) => Promise<void>
   loadSettings: () => Promise<void>
 }
 
@@ -55,11 +55,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     const settings = await window.agentManager.getSettings()
     set({ settings })
   },
-  refreshScan: async () => {
+  refreshScan: async (options) => {
+    // #region agent log
+    const startedAt = Date.now()
+    fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'082fb2'},body:JSON.stringify({sessionId:'082fb2',location:'appStore.ts:refreshScan',message:'refreshScan started',data:{probeMcps:options?.probeMcps===true,runId:'post-fix'},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{})
+    // #endregion
     set({ loading: true })
     try {
-      const scan = await window.agentManager.scanAll()
+      const scan = await window.agentManager.scanAll(options)
       set({ scan })
+      // #region agent log
+      fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'082fb2'},body:JSON.stringify({sessionId:'082fb2',location:'appStore.ts:refreshScan:done',message:'refreshScan done',data:{durationMs:Date.now()-startedAt,skills:scan.skills.length,mcps:scan.mcps.length,probeMcps:options?.probeMcps===true,runId:'post-fix'},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{})
+      // #endregion
     } finally {
       set({ loading: false })
     }

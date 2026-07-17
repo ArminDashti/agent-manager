@@ -4,13 +4,15 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { GeneralTab } from '@renderer/components/settings/GeneralTab'
 import { StorageTab } from '@renderer/components/settings/StorageTab'
 import { PlatformsTab } from '@renderer/components/settings/PlatformsTab'
+import { OpenRouterTab } from '@renderer/components/settings/OpenRouterTab'
 
-type SettingsTab = 'general' | 'storage' | 'platforms'
+type SettingsTab = 'general' | 'storage' | 'platforms' | 'openRouter'
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: 'General' },
   { id: 'storage', label: 'Storage' },
-  { id: 'platforms', label: 'Platforms' }
+  { id: 'platforms', label: 'Platforms' },
+  { id: 'openRouter', label: 'OpenRouter' }
 ]
 
 export function SettingsPage() {
@@ -58,6 +60,9 @@ export function SettingsPage() {
       )}
       {tab === 'platforms' && (
         <PlatformsTab settings={localSettings} onChange={setLocalSettings} />
+      )}
+      {tab === 'openRouter' && (
+        <OpenRouterTab settings={localSettings} onChange={setLocalSettings} />
       )}
     </div>
   )

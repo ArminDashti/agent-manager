@@ -1,0 +1,12 @@
+---
+description: Server API endpoint reference for parkiroid-server
+alwaysApply: true
+---
+
+# Parkiroid Server API Endpoints
+
+When you need server API routes, request/response shapes, auth, or error codes, read the canonical reference:
+
+`C:\Users\armin\Documents\GitHub\parkiroid-server\endpoints.md`
+
+Do not guess endpoint paths or payloads. Use that file as the source of truth for the `/parkiroid/api/v1/` API.

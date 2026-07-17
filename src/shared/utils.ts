@@ -2,7 +2,12 @@ import { createHash } from 'crypto'
 import { homedir } from 'os'
 import { join } from 'path'
 
-export { isMarkdownFile, parseFrontmatter, HUB_TYPE_FOLDERS } from './utils.browser'
+export {
+  isMarkdownFile,
+  parseFrontmatter,
+  defaultCategoryFromName,
+  HUB_TYPE_FOLDERS
+} from './utils.browser'
 
 export function expandHome(input: string): string {
   if (input.startsWith('~/')) {

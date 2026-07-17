@@ -5,31 +5,37 @@
 Layout: custom `TitleBar` (frameless window controls), collapsible sidebar (icon-only when collapsed), collapsible nav groups (Resources / Other), resizable 2-panel layouts for edit sub-views.
 
 Resource pages (Skills, Rules, Hooks, Sub-agents, Tools) use a shared table-based UI:
-- **Skills & Rules list view**: columns for category (inline editable, stored in settings), name, description, project usage, token estimate, last updated, all-projects toggle, install, delete. Row click opens editor. Multi-select category filter and **project filter dropdown** in toolbar.
+- List roots use `h-full min-h-0`; table scroll containers use `flex-1 min-h-0 overflow-auto` so long grids scroll inside the viewport instead of clipping
+- **Skills & Rules list view**: columns for category (inline editable, stored in settings), name, description, project usage, token estimate, last updated, all-projects toggle, install, delete. Row click opens editor. Multi-select category filter and **project filter dropdown** in toolbar. Skills without a stored category get a default from the name prefix before the first hyphen (e.g. `git-local-commit` → `git`).
 - **Hooks & Sub-agents list view**: same enhanced grid as skills/rules (description, toggle, row-click edit) with project filter; no category column
 - **Tools list view**: name, project usage, tokens, last updated, install, delete, mandatory checkbox
+- **Toolbar**: search, optional project/category filters, and a checkbox **Hide resources used in only one project** (default on; persisted in `uiFilters.hideSingleProject`)
 - **Add Skill**: larger modal (720px), select-all projects, navigates directly to editor on create (no success toast)
 - **Add Rule/Hook/Sub-agent**: standard modal with success toast
 - **Assign/Install view**: project matrix with checkboxes, sortable by name
-- **Edit view**: file tree (left) + markdown/JSON editor (right)
+- **Edit view**: file tree (left) + markdown/JSON editor (right); **Refactor by OpenRouter** button for Skills, Rules, Hooks, Sub-agents
+- **List row action**: sparkles icon opens OpenRouter refactor modal (same resource types)
 
 **Markdown editor**: Edit, Preview, and Split modes; live debounced preview; GFM rendering with improved typography.
 
 **Rules naming**: `.cursor` rules use `.mdc`; other platforms use `.md`. The UI groups by base name and displays `Example.md` when both `Example.mdc` and `Example.md` exist.
 
-MCP page: single table (name, status, edit, delete) with Add MCP JSON modal. Edit sub-view opens raw JSON editor for the server entry (no structured field picker).
+MCP page: table columns name, status, **tools count**, edit, delete; Add MCP JSON modal. Status probing runs only when opening the MCPs page (`refreshScan({ probeMcps: true })`), not on every global scan. Edit sub-view: JSON editor plus a tools list showing each tool’s **name and description**.
 
-**Settings** (3 tabs):
+**Settings** (4 tabs):
 - **General**: GitHub PAT, Hub URL, Windows startup toggle, sync interval (default 30 min pull+push)
 - **Storage**: Git Backup repo, project import (multi-select)
 - **Platforms**: card grid with enabled/available sections, toggle per platform, path + browse, sticky save bar
+- **OpenRouter**: API token + model id used by Refactor by OpenRouter
+
+**OpenRouter refactor modal**: user enters edit instructions; main process sends resource content + prompt to OpenRouter; preview then Apply writes the file.
 
 **Messages**: global minimal `MessageModal` via `messageStore` (replaces inline status and `confirm()`).
 
 Hub install for skill/rule/hook prompts project picker (installs to project `.cursor`).
 
-Shared components: `ResourcePage`, `ResourceListView`, `ResourceAssignView`, `ResourceEditView`, `ResourceTable`, `CategoryFilterDropdown`, `ProjectFilterDropdown`, `AddResourceModal`, `MessageModal`, `Toggle`, `MarkdownEditor`, `JsonEditor`, `FileTree`, `PlatformLogo`, settings tabs under `components/settings/`.
+Shared components: `ResourcePage`, `ResourceListView`, `HooksListView`, `ResourceAssignView`, `ResourceEditView`, `OpenRouterRefactorModal`, `ResourceTable`, `CategoryFilterDropdown`, `ProjectFilterDropdown`, `AddResourceModal`, `MessageModal`, `Toggle`, `MarkdownEditor`, `JsonEditor`, `FileTree`, `PlatformLogo`, settings tabs under `components/settings/` (incl. `OpenRouterTab`).
 
-State: Zustand `useAppStore` for page navigation, scan results, hub filter. Resource stats and assignment via IPC (`getResourceStats`, `getProjectMatrix`, `applyProjectAssignment`, `setMandatory`, `setResourceCategory`, `deleteResource`, `createResource`).
+State: Zustand `useAppStore` for page navigation, scan results, hub filter. Resource stats and assignment via IPC (`getResourceStats`, `getProjectMatrix`, `applyProjectAssignment`, `setMandatory`, `setResourceCategory`, `deleteResource`, `createResource`, `openRouterRefactor`).
 
-Skills, hooks, rules, and sub-agents load from imported projects only. MCPs and tools still scan platform roots.
+Skills, hooks, rules, and sub-agents load from imported projects only. MCPs and tools still scan platform roots. Editing a skill on disk (or in-app) fans out that skill folder to all other projects that already use it.

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Download, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Sparkles, Trash2 } from 'lucide-react'
 import type { ResourceGroupSummary, ResourceType, UiFilterState } from '@shared/types'
 import { formatDateWithRelative } from '@shared/utils.browser'
 import { ResourceTable } from './ResourceTable'
-import { ResourceListToolbar, type ResourceFilter } from './ResourceListToolbar'
+import { ResourceListToolbar } from './ResourceListToolbar'
+import { OpenRouterRefactorModal } from './OpenRouterRefactorModal'
 import { ALL_PROJECTS_KEY } from './ProjectFilterDropdown'
 import { UNCATEGORIZED_KEY } from './CategoryFilterDropdown'
 import { showMessage } from '@renderer/stores/messageStore'
@@ -60,8 +61,9 @@ export function ResourceListView({
   const { settings } = useAppStore()
   const [summaries, setSummaries] = useState<ResourceGroupSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [refactorTarget, setRefactorTarget] = useState<string | null>(null)
 
-  const { search, filter, selectedProjectId, selectedCategories, sortKey, sortDir } =
+  const { search, hideSingleProject, selectedProjectId, selectedCategories, sortKey, sortDir } =
     filterState
   const selectedCategorySet = useMemo(
     () => new Set(selectedCategories),
@@ -71,12 +73,20 @@ export function ResourceListView({
   const enhanced = isEnhancedGrid(resourceType)
   const showCategory = hasCategoryColumn(resourceType)
   const renamable = isRenamable(resourceType)
+  const refactorable = isEnhancedGrid(resourceType)
 
   const load = useCallback(async () => {
+    // #region agent log
+    const startedAt = Date.now()
+    fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceListView.tsx:load',message:'ResourceListView getResourceStats started',data:{resourceType},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{})
+    // #endregion
     setLoading(true)
     try {
       const stats = await window.agentManager.getResourceStats(resourceType)
       setSummaries(stats)
+      // #region agent log
+      fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceListView.tsx:load:done',message:'ResourceListView getResourceStats done',data:{resourceType,durationMs:Date.now()-startedAt,count:stats.length,names:stats.map((s)=>s.name)},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{})
+      // #endregion
     } finally {
       setLoading(false)
     }
@@ -118,8 +128,8 @@ export function ResourceListView({
     if (enhanced && selectedProjectId !== ALL_PROJECTS_KEY) {
       rows = rows.filter((r) => r.assignedProjectIds.includes(selectedProjectId))
     }
-    if (filter === 'single-project') {
-      rows = rows.filter((r) => r.usedProjectCount === 1)
+    if (hideSingleProject) {
+      rows = rows.filter((r) => r.usedProjectCount !== 1)
     }
     if (showCategory && selectedCategorySet.size > 0) {
       rows = rows.filter((r) => {
@@ -129,7 +139,7 @@ export function ResourceListView({
         return false
       })
     }
-    return [...rows].sort((a, b) => {
+    const sorted = [...rows].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1
       switch (sortKey) {
         case 'category':
@@ -150,16 +160,32 @@ export function ResourceListView({
           return a.name.localeCompare(b.name) * dir
       }
     })
+    // #region agent log
+    void window.agentManager.debugLog('B', 'ResourceListView.tsx:filtered', 'filter/sort result', {
+      resourceType,
+      summariesCount: summaries.length,
+      filteredCount: sorted.length,
+      search,
+      hideSingleProject,
+      selectedProjectId,
+      selectedCategories: [...selectedCategorySet],
+      lastNames: sorted.slice(-5).map((r) => r.name),
+      runId: 'post-fix'
+    })
+    fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceListView.tsx:filtered',message:'filter/sort result',data:{resourceType,summariesCount:summaries.length,filteredCount:sorted.length,search,hideSingleProject,selectedProjectId,selectedCategories:[...selectedCategorySet],lastNames:sorted.slice(-5).map((r)=>r.name),runId:'post-fix'},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{})
+    // #endregion
+    return sorted
   }, [
     summaries,
     search,
-    filter,
+    hideSingleProject,
     selectedCategorySet,
     selectedProjectId,
     sortKey,
     sortDir,
     showCategory,
-    enhanced
+    enhanced,
+    resourceType
   ])
 
   const handleSort = (key: string) => {
@@ -221,6 +247,25 @@ export function ResourceListView({
         title="Install"
       >
         <Download size={14} />
+      </button>
+    )
+  }
+
+  const refactorColumn = {
+    key: 'refactor',
+    label: '',
+    className: 'w-20',
+    render: (row: ResourceGroupSummary) => (
+      <button
+        type="button"
+        onClick={(e) => {
+          stopProp(e)
+          setRefactorTarget(row.name)
+        }}
+        className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-violet-400"
+        title="Refactor by OpenRouter"
+      >
+        <Sparkles size={14} />
       </button>
     )
   }
@@ -339,6 +384,7 @@ export function ResourceListView({
       )
     },
     installColumn,
+    ...(refactorable ? [refactorColumn] : []),
     deleteColumn
   ]
 
@@ -381,7 +427,7 @@ export function ResourceListView({
     : legacyColumns
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       <header className="px-4 py-3 border-b border-zinc-800">
         <h2 className="text-lg font-medium">{title}</h2>
         {subtitle && <p className="text-xs text-zinc-500 mt-0.5">{subtitle}</p>}
@@ -389,8 +435,8 @@ export function ResourceListView({
       <ResourceListToolbar
         search={search}
         onSearchChange={(value) => onFilterChange({ search: value })}
-        filter={filter as ResourceFilter}
-        onFilterChange={(value) => onFilterChange({ filter: value })}
+        hideSingleProject={hideSingleProject}
+        onHideSingleProjectChange={(value) => onFilterChange({ hideSingleProject: value })}
         onAdd={onAdd}
         selectedCategories={showCategory ? selectedCategorySet : undefined}
         onCategoryFilterChange={
@@ -418,16 +464,25 @@ export function ResourceListView({
           onRowClick={enhanced ? (row) => onEdit(row.name) : undefined}
         />
       )}
+      {refactorTarget && refactorable && (
+        <OpenRouterRefactorModal
+          resourceType={resourceType}
+          resourceName={refactorTarget}
+          onClose={() => setRefactorTarget(null)}
+        />
+      )}
     </div>
   )
 }
 
 export function ResourceSubViewHeader({
   title,
-  onBack
+  onBack,
+  actions
 }: {
   title: string
   onBack: () => void
+  actions?: React.ReactNode
 }) {
   return (
     <header className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
@@ -439,7 +494,8 @@ export function ResourceSubViewHeader({
       >
         <ArrowLeft size={16} />
       </button>
-      <h2 className="text-lg font-medium">{title}</h2>
+      <h2 className="text-lg font-medium flex-1">{title}</h2>
+      {actions}
     </header>
   )
 }

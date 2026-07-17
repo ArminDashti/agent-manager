@@ -2,6 +2,20 @@ export function isMarkdownFile(path: string): boolean {
   return /\.(md|mdc)$/i.test(path)
 }
 
+const BLOCK_SCALAR_RE = /^(>|>-|\||\|-)\s*$/
+
+function isIndentedContinuation(line: string): boolean {
+  return line.length > 0 && /^\s/.test(line)
+}
+
+function joinBlockScalar(style: string, lines: string[]): string {
+  const trimmed = lines.map((l) => l.replace(/^\s+/, ''))
+  if (style.startsWith('>')) {
+    return trimmed.join(' ').replace(/\s+/g, ' ').trim()
+  }
+  return trimmed.join('\n').trim()
+}
+
 export function parseFrontmatter(content: string): {
   frontmatter: Record<string, unknown>
   body: string
@@ -12,20 +26,51 @@ export function parseFrontmatter(content: string): {
   }
 
   const frontmatter: Record<string, unknown> = {}
-  for (const line of match[1].split('\n')) {
+  const lines = match[1].split(/\r?\n/)
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
     const idx = line.indexOf(':')
-    if (idx === -1) continue
-    const key = line.slice(0, idx).trim()
-    let value: unknown = line.slice(idx + 1).trim()
-    if (typeof value === 'string' && value.startsWith('|')) {
-      value = value.slice(1).trim()
+    if (idx === -1) {
+      i++
+      continue
     }
+
+    const key = line.slice(0, idx).trim()
+    if (!key) {
+      i++
+      continue
+    }
+
+    let value: unknown = line.slice(idx + 1).trim()
+    if (typeof value === 'string' && BLOCK_SCALAR_RE.test(value)) {
+      const style = value
+      const blockLines: string[] = []
+      i++
+      while (i < lines.length && isIndentedContinuation(lines[i])) {
+        blockLines.push(lines[i])
+        i++
+      }
+      value = joinBlockScalar(style, blockLines)
+      frontmatter[key] = value
+      continue
+    }
+
     if (value === 'true') value = true
-    if (value === 'false') value = false
+    else if (value === 'false') value = false
     frontmatter[key] = value
+    i++
   }
 
   return { frontmatter, body: match[2] }
+}
+
+/** First segment before `-`, e.g. `git-local-commit` → `git`. Empty if no hyphen. */
+export function defaultCategoryFromName(name: string): string {
+  const idx = name.indexOf('-')
+  if (idx <= 0) return ''
+  return name.slice(0, idx).trim()
 }
 
 export const HUB_TYPE_FOLDERS: Record<string, string> = {

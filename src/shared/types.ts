@@ -43,7 +43,8 @@ export interface ProjectRootConfig {
 
 export interface UiFilterState {
   search: string
-  filter: 'all' | 'single-project'
+  /** When true, hide resources used in exactly one project. */
+  hideSingleProject: boolean
   selectedProjectId: string
   selectedCategories: string[]
   sortKey: string
@@ -60,6 +61,10 @@ export interface AppSettings {
     pat: string
     patValid: boolean
     patValidatedAt: string | null
+  }
+  openRouter: {
+    apiKey: string
+    model: string
   }
   repoBank: {
     url: string

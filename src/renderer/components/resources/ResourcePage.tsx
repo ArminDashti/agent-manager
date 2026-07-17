@@ -72,10 +72,18 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
   )
 
   const loadSummaries = useCallback(async () => {
+    if (resourceType !== 'hook') return
+    // #region agent log
+    const startedAt = Date.now()
+    fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'082fb2'},body:JSON.stringify({sessionId:'082fb2',location:'ResourcePage.tsx:loadSummaries',message:'ResourcePage getResourceStats started',data:{resourceType,runId:'post-fix'},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{})
+    // #endregion
     setLoading(true)
     try {
       const stats = await window.agentManager.getResourceStats(resourceType)
       setSummaries(stats)
+      // #region agent log
+      fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'082fb2'},body:JSON.stringify({sessionId:'082fb2',location:'ResourcePage.tsx:loadSummaries:done',message:'ResourcePage getResourceStats done',data:{resourceType,durationMs:Date.now()-startedAt,count:stats.length,runId:'post-fix'},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{})
+      // #endregion
     } finally {
       setLoading(false)
     }

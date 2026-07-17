@@ -20,6 +20,10 @@ export function createDefaultSettings(): AppSettings {
       patValid: false,
       patValidatedAt: null
     },
+    openRouter: {
+      apiKey: '',
+      model: 'openai/gpt-4o-mini'
+    },
     repoBank: {
       url: '',
       localClonePath: './data/repo-bank',

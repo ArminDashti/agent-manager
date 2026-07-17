@@ -4,6 +4,7 @@ import { join } from 'path'
 import { existsSync } from 'fs'
 import { settingsStore } from './settings-store'
 import { getAdapter } from '../platforms'
+import { scheduleSkillSyncFromPath } from './skill-sync.service'
 
 let watcher: ReturnType<typeof watch> | null = null
 let notifyTimer: ReturnType<typeof setTimeout> | null = null
@@ -27,26 +28,30 @@ function collectWatchPaths(): string[] {
 
   for (const root of settings.projectRoots) {
     for (const project of root.projects) {
-      const cursorAdapter = getAdapter('cursor')
-      if (!cursorAdapter) continue
-      const projectPaths = cursorAdapter.getProjectPaths(project.path)
-      const candidates = [
-        ...projectPaths.skillsDirs,
-        projectPaths.rulesDir,
-        projectPaths.hooksScriptsDir,
-        projectPaths.agentsDir,
-        projectPaths.hooksConfigPath
-      ]
-      for (const p of candidates) {
-        if (p && existsSync(p)) paths.add(p)
-      }
       for (const platform of settings.platforms) {
-        if (!platform.enabled || platform.id === 'cursor') continue
+        if (!platform.enabled) continue
         const adapter = getAdapter(platform.id)
         if (!adapter) continue
-        const pp = adapter.getProjectPaths(project.path)
-        if (existsSync(pp.toolsDir)) paths.add(pp.toolsDir)
-        if (existsSync(pp.mcpConfigPath)) paths.add(pp.mcpConfigPath)
+        const projectPaths = adapter.getProjectPaths(project.path)
+
+        if (platform.id === 'cursor') {
+          const candidates = [
+            ...projectPaths.skillsDirs,
+            projectPaths.rulesDir,
+            projectPaths.hooksScriptsDir,
+            projectPaths.agentsDir,
+            projectPaths.hooksConfigPath
+          ]
+          for (const p of candidates) {
+            if (p && existsSync(p)) paths.add(p)
+          }
+        } else {
+          for (const skillsDir of projectPaths.skillsDirs) {
+            if (existsSync(skillsDir)) paths.add(skillsDir)
+          }
+          if (existsSync(projectPaths.toolsDir)) paths.add(projectPaths.toolsDir)
+          if (existsSync(projectPaths.mcpConfigPath)) paths.add(projectPaths.mcpConfigPath)
+        }
       }
     }
   }
@@ -75,7 +80,12 @@ export function startFileWatcher(): void {
     }, 1500)
   }
 
-  watcher.on('add', notify).on('change', notify).on('unlink', notify)
+  const onSkillOrNotify = (changedPath: string): void => {
+    scheduleSkillSyncFromPath(changedPath)
+    notify()
+  }
+
+  watcher.on('add', onSkillOrNotify).on('change', onSkillOrNotify).on('unlink', onSkillOrNotify)
 }
 
 export function stopFileWatcher(): void {
