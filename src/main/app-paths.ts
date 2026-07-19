@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 let appRoot: string | null = null
@@ -7,7 +7,11 @@ let appRoot: string | null = null
 export function getAppRoot(): string {
   if (appRoot) return appRoot
 
-  if (app.isPackaged) {
+  // electron-builder portable unpacks to %TEMP%; persist next to the real .exe instead.
+  const portableDir = process.env.PORTABLE_EXECUTABLE_DIR
+  if (portableDir) {
+    appRoot = portableDir
+  } else if (app.isPackaged) {
     appRoot = join(app.getPath('exe'), '..')
   } else {
     appRoot = process.cwd()
@@ -32,7 +36,13 @@ export function ensurePortableLayout(): void {
     'data/hub-cache/tools',
     'data/repo-bank',
     'mcps',
-    'logos'
+    'logos',
+    '.trash',
+    '.trash/skills',
+    '.trash/rules',
+    '.trash/hooks',
+    '.trash/subAgents',
+    '.trash/tools'
   ]
 
   for (const dir of dirs) {
@@ -40,6 +50,11 @@ export function ensurePortableLayout(): void {
     if (!existsSync(full)) {
       mkdirSync(full, { recursive: true })
     }
+  }
+
+  const importedPath = join(root, 'imported-projects.json')
+  if (!existsSync(importedPath)) {
+    writeFileSync(importedPath, `${JSON.stringify({ projectRoots: [] }, null, 2)}\n`, 'utf-8')
   }
 
   seedLogos(root)
@@ -72,4 +87,12 @@ export function getLogosPath(): string {
 
 export function getSettingsPath(): string {
   return resolveFromAppRoot('settings.json')
+}
+
+export function getImportedProjectsPath(): string {
+  return resolveFromAppRoot('imported-projects.json')
+}
+
+export function getTrashPath(...segments: string[]): string {
+  return resolveFromAppRoot('.trash', ...segments)
 }

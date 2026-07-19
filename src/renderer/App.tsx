@@ -49,7 +49,7 @@ export default function App() {
 
         void refreshScan()
 
-      }, 1000)
+      }, 75)
 
     }
 

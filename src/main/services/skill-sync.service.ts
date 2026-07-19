@@ -6,6 +6,7 @@ import { settingsStore } from './settings-store'
 
 const syncingRoots = new Set<string>()
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let paused = false
 
 function normalizePath(p: string): string {
   return resolve(p).replace(/\\/g, '/').toLowerCase()
@@ -17,6 +18,26 @@ function isUnderSyncingRoot(changedPath: string): boolean {
     if (n === root || n.startsWith(`${root}/`)) return true
   }
   return false
+}
+
+/** Pause fan-out during in-app rename/delete so mid-move events do not sync ghosts. */
+export function pauseSkillSync(): void {
+  paused = true
+  for (const timer of pendingTimers.values()) clearTimeout(timer)
+  pendingTimers.clear()
+}
+
+export function resumeSkillSync(): void {
+  paused = false
+}
+
+export async function withSkillSyncPaused<T>(fn: () => Promise<T>): Promise<T> {
+  pauseSkillSync()
+  try {
+    return await fn()
+  } finally {
+    resumeSkillSync()
+  }
 }
 
 export function resolveSkillFromPath(
@@ -81,6 +102,7 @@ function collectOtherSkillRoots(skillName: string, sourceRoot: string): string[]
 }
 
 async function syncSkillFromResolved(skillName: string, sourceRoot: string): Promise<void> {
+  if (paused) return
   if (!existsSync(join(sourceRoot, 'SKILL.md'))) return
 
   const destRoots = collectOtherSkillRoots(skillName, sourceRoot)
@@ -103,6 +125,7 @@ async function syncSkillFromResolved(skillName: string, sourceRoot: string): Pro
 
 /** Debounced fan-out: copy the changed skill folder to every other project that already has it. */
 export function scheduleSkillSyncFromPath(changedPath: string): void {
+  if (paused) return
   if (isUnderSyncingRoot(changedPath)) return
 
   const resolved = resolveSkillFromPath(changedPath)

@@ -17,13 +17,16 @@ import { CURSOR_ONLY_RESOURCES } from '@shared/types'
 import { ruleBaseName, ruleDisplayName, ruleMatchesDisplayName } from '@shared/rule-names'
 import { isValidResourceName } from '@shared/resource-names'
 import { parseFrontmatter, defaultCategoryFromName } from '@shared/utils'
-import { fileService } from './file.service'
+import { fileService, type TrashResourceKind } from './file.service'
 import { assignmentService } from './assignment.service'
 import { scannerService } from './scanner.service'
 import { settingsStore } from './settings-store'
 import { repoBankService } from './repo-bank.service'
+import { withQuietWatch } from './watcher.service'
+import { withSkillSyncPaused } from './skill-sync.service'
 import { getAdapter } from '../platforms'
 import { agentDebugLog } from './debug-log'
+import type { PlatformPaths } from '../platforms/types'
 
 type ScannedResource =
   | SkillResource
@@ -148,6 +151,40 @@ function countProjectsUsing(instances: ScannedResource[]): number {
 
 function getAllProjects(settings: AppSettings) {
   return settings.projectRoots.flatMap((r) => r.projects)
+}
+
+function trashKind(resourceType: Exclude<ResourceType, 'mcp'>): TrashResourceKind {
+  switch (resourceType) {
+    case 'skill':
+      return 'skills'
+    case 'rule':
+      return 'rules'
+    case 'hook':
+      return 'hooks'
+    case 'subAgent':
+      return 'subAgents'
+    case 'tool':
+      return 'tools'
+  }
+}
+
+async function withInAppFsOp<T>(fn: () => Promise<T>): Promise<T> {
+  return withQuietWatch(() => withSkillSyncPaused(fn))
+}
+
+function* iterateProjectPlatformPaths(settings: AppSettings): Generator<{
+  project: ProjectInfo
+  paths: PlatformPaths
+  platformId: string
+}> {
+  for (const project of getAllProjects(settings)) {
+    for (const platform of settings.platforms) {
+      if (!platform.enabled) continue
+      const adapter = getAdapter(platform.id)
+      if (!adapter) continue
+      yield { project, paths: adapter.getProjectPaths(project.path), platformId: platform.id }
+    }
+  }
 }
 
 async function estimateTokens(item: ScannedResource, resourceType: ResourceType): Promise<number> {
@@ -430,67 +467,75 @@ export class ResourceService {
     resourceType: Exclude<ResourceType, 'mcp'>,
     resourceName: string
   ): Promise<void> {
-    const items = filterItems(getItems(scan, resourceType), resourceType)
-    const instances = items.filter((i) => matchesResourceName(i, resourceType, resourceName))
-    const seen = new Set<string>()
+    await withInAppFsOp(async () => {
+      const items = filterItems(getItems(scan, resourceType), resourceType)
+      const instances = items.filter((i) => matchesResourceName(i, resourceType, resourceName))
+      const seen = new Set<string>()
+      const kind = trashKind(resourceType)
 
-    for (const item of instances) {
-      let path: string
-      switch (resourceType) {
-        case 'skill':
-          path = (item as SkillResource).rootPath
-          break
-        case 'rule':
-          path = (item as RuleResource).filePath
-          break
-        case 'hook':
-          path = (item as HookResource).configPath
-          break
-        case 'subAgent':
-          path = (item as SubAgentResource).filePath
-          break
-        case 'tool':
-          path = (item as ToolResource).rootPath
-          break
-        default:
-          continue
-      }
-      if (seen.has(path)) continue
-      seen.add(path)
-
-      if (resourceType === 'hook') {
-        await this.removeHookFromConfig(item as HookResource)
-      } else {
-        await fileService.removePath(path)
-      }
-    }
-
-    const assignKey = ASSIGNMENT_KEY[resourceType]
-    settingsStore.update((s) => {
-      const nextAssignments = { ...s.assignments[assignKey] }
       for (const item of instances) {
-        delete nextAssignments[item.id]
-      }
-      const nextMandatory = { ...(s.mandatoryForAllProjects?.[MANDATORY_KEY[resourceType]] ?? {}) }
-      delete nextMandatory[resourceName]
+        if (resourceType === 'hook') {
+          const hook = item as HookResource
+          const key = `${hook.configPath}::${hook.definition.command ?? ''}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          await this.trashHookInstance(hook, resourceName)
+          continue
+        }
 
-      const nextCategories = { ...s.resourceCategories }
-      if (resourceType === 'skill' || resourceType === 'rule') {
-        const catKey = CATEGORY_KEY[resourceType]
-        const cats = { ...nextCategories[catKey] }
-        delete cats[resourceName]
-        nextCategories[catKey] = cats
+        let path: string
+        switch (resourceType) {
+          case 'skill':
+            path = (item as SkillResource).rootPath
+            break
+          case 'rule':
+            path = (item as RuleResource).filePath
+            break
+          case 'subAgent':
+            path = (item as SubAgentResource).filePath
+            break
+          case 'tool':
+            path = (item as ToolResource).rootPath
+            break
+          default:
+            continue
+        }
+        if (seen.has(path)) continue
+        seen.add(path)
+        await fileService.moveToTrash(path, kind, resourceName, {
+          resourceType,
+          sourceType: item.source.type,
+          sourceId: item.source.id
+        })
       }
 
-      return {
-        ...s,
-        assignments: { ...s.assignments, [assignKey]: nextAssignments },
-        mandatoryForAllProjects: {
-          ...s.mandatoryForAllProjects,
-          [MANDATORY_KEY[resourceType]]: nextMandatory
-        },
-        resourceCategories: nextCategories
-      }
+      const assignKey = ASSIGNMENT_KEY[resourceType]
+      settingsStore.update((s) => {
+        const nextAssignments = { ...s.assignments[assignKey] }
+        for (const item of instances) {
+          delete nextAssignments[item.id]
+        }
+        const nextMandatory = { ...(s.mandatoryForAllProjects?.[MANDATORY_KEY[resourceType]] ?? {}) }
+        delete nextMandatory[resourceName]
+
+        const nextCategories = { ...s.resourceCategories }
+        if (resourceType === 'skill' || resourceType === 'rule') {
+          const catKey = CATEGORY_KEY[resourceType]
+          const cats = { ...nextCategories[catKey] }
+          delete cats[resourceName]
+          nextCategories[catKey] = cats
+        }
+
+        return {
+          ...s,
+          assignments: { ...s.assignments, [assignKey]: nextAssignments },
+          mandatoryForAllProjects: {
+            ...s.mandatoryForAllProjects,
+            [MANDATORY_KEY[resourceType]]: nextMandatory
+          },
+          resourceCategories: nextCategories
+        }
+      })
     })
   }
 
@@ -512,7 +557,30 @@ export class ResourceService {
     }))
   }
 
-  private async removeHookFromConfig(hook: HookResource): Promise<void> {
+  private async trashHookInstance(hook: HookResource, resourceName: string): Promise<void> {
+    const snippet = {
+      event: hook.event,
+      definition: hook.definition,
+      configPath: hook.configPath,
+      scriptPath: hook.scriptPath ?? null
+    }
+
+    if (hook.scriptPath && existsSync(hook.scriptPath)) {
+      await fileService.moveToTrash(hook.scriptPath, 'hooks', resourceName, {
+        resourceType: 'hook',
+        ...snippet
+      })
+    } else {
+      await fileService.writeTrashMeta('hooks', resourceName, {
+        resourceType: 'hook',
+        ...snippet
+      })
+    }
+
+    await this.stripHookFromConfig(hook)
+  }
+
+  private async stripHookFromConfig(hook: HookResource): Promise<void> {
     if (!existsSync(hook.configPath)) return
     try {
       const raw = await fileService.readText(hook.configPath)
@@ -529,9 +597,6 @@ export class ResourceService {
         parsed.hooks[hook.event] = filtered
       }
       await fileService.writeText(hook.configPath, JSON.stringify(parsed, null, 2))
-      if (hook.scriptPath && existsSync(hook.scriptPath)) {
-        await fileService.removePath(hook.scriptPath)
-      }
     } catch {
       // ignore
     }
@@ -669,44 +734,123 @@ export class ResourceService {
       throw new Error(`A resource named "${trimmed}" already exists`)
     }
 
-    const instances = items.filter((i) => matchesResourceName(i, resourceType, oldName))
-    if (instances.length === 0) throw new Error(`Resource not found: ${oldName}`)
+    const settings = settingsStore.get()
+    if (this.nameExistsOnDisk(settings, resourceType, trimmed)) {
+      throw new Error(`A resource named "${trimmed}" already exists`)
+    }
 
     const seen = new Set<string>()
-    for (const item of instances) {
+
+    await withInAppFsOp(async () => {
+      // Primary: walk every imported project root so rename never depends on a stale scan.
+      for (const { paths, platformId } of iterateProjectPlatformPaths(settings)) {
+        if (CURSOR_ONLY_RESOURCES.includes(resourceType) && platformId !== 'cursor') continue
+
+        switch (resourceType) {
+          case 'skill':
+            for (const skillsDir of paths.skillsDirs) {
+              const oldRoot = join(skillsDir, oldName)
+              if (!existsSync(oldRoot)) continue
+              await this.renameSkillAtRoot(oldRoot, trimmed, seen)
+            }
+            break
+          case 'rule': {
+            const base = ruleBaseName(oldName)
+            for (const ext of ['.mdc', '.md'] as const) {
+              const oldPath = join(paths.rulesDir, `${base}${ext}`)
+              if (!existsSync(oldPath)) continue
+              await this.renameRuleAtPath(oldPath, trimmed, seen)
+            }
+            break
+          }
+          case 'subAgent': {
+            if (!paths.agentsDir) break
+            const oldPath = join(paths.agentsDir, `${oldName}.md`)
+            if (!existsSync(oldPath)) continue
+            await this.renameSubAgentAtPath(oldPath, trimmed, seen)
+            break
+          }
+          case 'hook': {
+            if (!paths.hooksConfigPath || !existsSync(paths.hooksConfigPath)) break
+            await this.renameHookInConfig(paths, oldName, trimmed, seen)
+            break
+          }
+        }
+      }
+
+      // Fallback: any non-project (local/platform) scan instances not already renamed.
+      const instances = items.filter((i) => matchesResourceName(i, resourceType, oldName))
+      for (const item of instances) {
+        switch (resourceType) {
+          case 'skill':
+            await this.renameSkillAtRoot((item as SkillResource).rootPath, trimmed, seen)
+            break
+          case 'rule':
+            await this.renameRuleAtPath((item as RuleResource).filePath, trimmed, seen)
+            break
+          case 'hook':
+            await this.renameHookInstance(item as HookResource, oldName, trimmed, seen)
+            break
+          case 'subAgent':
+            await this.renameSubAgentAtPath((item as SubAgentResource).filePath, trimmed, seen)
+            break
+        }
+      }
+
+      if (seen.size === 0) {
+        throw new Error(`Resource not found: ${oldName}`)
+      }
+
+      this.migrateSettingsKeys(resourceType, oldName, trimmed)
+    })
+  }
+
+  private nameExistsOnDisk(
+    settings: AppSettings,
+    resourceType: 'skill' | 'rule' | 'hook' | 'subAgent',
+    name: string
+  ): boolean {
+    for (const { paths, platformId } of iterateProjectPlatformPaths(settings)) {
+      if (CURSOR_ONLY_RESOURCES.includes(resourceType) && platformId !== 'cursor') continue
       switch (resourceType) {
         case 'skill':
-          await this.renameSkillInstance(item as SkillResource, trimmed, seen)
+          for (const skillsDir of paths.skillsDirs) {
+            if (existsSync(join(skillsDir, name))) return true
+          }
           break
-        case 'rule':
-          await this.renameRuleInstance(item as RuleResource, oldName, trimmed, seen)
+        case 'rule': {
+          const base = ruleBaseName(name)
+          if (
+            existsSync(join(paths.rulesDir, `${base}.mdc`)) ||
+            existsSync(join(paths.rulesDir, `${base}.md`))
+          ) {
+            return true
+          }
+          break
+        }
+        case 'subAgent':
+          if (paths.agentsDir && existsSync(join(paths.agentsDir, `${name}.md`))) return true
           break
         case 'hook':
-          await this.renameHookInstance(item as HookResource, oldName, trimmed, seen)
-          break
-        case 'subAgent':
-          await this.renameSubAgentInstance(item as SubAgentResource, trimmed, seen)
+          // Hook name collisions are validated via scan grouping; skip deep config parse here.
           break
       }
     }
-
-    this.migrateSettingsKeys(resourceType, oldName, trimmed)
+    return false
   }
 
-  private async renameSkillInstance(
-    skill: SkillResource,
+  private async renameSkillAtRoot(
+    oldRoot: string,
     newName: string,
     seen: Set<string>
   ): Promise<void> {
-    const oldRoot = skill.rootPath
     if (seen.has(oldRoot)) return
     seen.add(oldRoot)
+    if (!existsSync(oldRoot)) return
 
     const parent = dirname(oldRoot)
     const newRoot = join(parent, newName)
-    if (existsSync(oldRoot)) {
-      await fileService.renamePath(oldRoot, newRoot)
-    }
+    await fileService.renamePath(oldRoot, newRoot)
 
     const skillMd = join(newRoot, 'SKILL.md')
     if (existsSync(skillMd)) {
@@ -718,39 +862,34 @@ export class ResourceService {
     }
   }
 
-  private async renameRuleInstance(
-    rule: RuleResource,
-    oldDisplayName: string,
+  private async renameRuleAtPath(
+    filePath: string,
     newDisplayName: string,
     seen: Set<string>
   ): Promise<void> {
-    if (seen.has(rule.filePath)) return
-    seen.add(rule.filePath)
+    if (seen.has(filePath)) return
+    seen.add(filePath)
+    if (!existsSync(filePath)) return
 
     const newBase = ruleBaseName(newDisplayName)
-    const dir = dirname(rule.filePath)
-    const ext = rule.filePath.endsWith('.mdc') ? '.mdc' : '.md'
+    const dir = dirname(filePath)
+    const ext = filePath.endsWith('.mdc') ? '.mdc' : '.md'
     const newPath = join(dir, `${newBase}${ext}`)
-
-    if (existsSync(rule.filePath)) {
-      await fileService.renamePath(rule.filePath, newPath)
-    }
+    await fileService.renamePath(filePath, newPath)
   }
 
-  private async renameSubAgentInstance(
-    agent: SubAgentResource,
+  private async renameSubAgentAtPath(
+    filePath: string,
     newName: string,
     seen: Set<string>
   ): Promise<void> {
-    if (seen.has(agent.filePath)) return
-    seen.add(agent.filePath)
+    if (seen.has(filePath)) return
+    seen.add(filePath)
+    if (!existsSync(filePath)) return
 
-    const dir = dirname(agent.filePath)
+    const dir = dirname(filePath)
     const newPath = join(dir, `${newName}.md`)
-
-    if (existsSync(agent.filePath)) {
-      await fileService.renamePath(agent.filePath, newPath)
-    }
+    await fileService.renamePath(filePath, newPath)
 
     if (existsSync(newPath)) {
       const text = await fileService.readText(newPath)
@@ -761,13 +900,80 @@ export class ResourceService {
     }
   }
 
+  private async renameHookInConfig(
+    paths: PlatformPaths,
+    oldName: string,
+    newName: string,
+    seen: Set<string>
+  ): Promise<void> {
+    const configPath = paths.hooksConfigPath
+    if (!configPath || seen.has(`walk:${configPath}:${oldName}`)) return
+    if (!existsSync(configPath)) return
+
+    const raw = await fileService.readText(configPath)
+    const parsed = JSON.parse(raw) as {
+      hooks?: Record<string, Array<Record<string, unknown>>>
+    }
+    parsed.hooks ??= {}
+
+    let matched: {
+      event: string
+      entry: Record<string, unknown>
+      command: string
+    } | null = null
+
+    for (const [event, entries] of Object.entries(parsed.hooks)) {
+      for (const entry of entries) {
+        const command = String(entry.command ?? '')
+        const scriptBase = basename(command)
+        const scriptName = scriptBase.replace(/\.[^.]+$/, '')
+        const hookKey = `${event}:${scriptName}`
+        if (
+          scriptName === oldName ||
+          hookKey === oldName ||
+          command === oldName ||
+          scriptBase === oldName
+        ) {
+          matched = { event, entry, command }
+          break
+        }
+      }
+      if (matched) break
+    }
+
+    if (!matched) return
+    seen.add(`walk:${configPath}:${oldName}`)
+
+    const hook: HookResource = {
+      id: `temp-${configPath}`,
+      name: oldName,
+      event: matched.event,
+      definition: matched.entry as HookResource['definition'],
+      configPath,
+      scriptPath: matched.command
+        ? join(paths.hooksScriptsDir || dirname(configPath), basename(matched.command))
+        : undefined,
+      scriptFiles: [],
+      source: { type: 'project', id: '', label: '' },
+      enabled: true
+    }
+
+    // Resolve script under hooksScriptsDir when relative.
+    if (matched.command && !existsSync(hook.scriptPath ?? '')) {
+      const candidate = join(paths.hooksScriptsDir, basename(matched.command))
+      if (existsSync(candidate)) hook.scriptPath = candidate
+    }
+
+    await this.renameHookInstance(hook, oldName, newName, seen)
+  }
+
   private async renameHookInstance(
     hook: HookResource,
     _oldName: string,
     newName: string,
     seen: Set<string>
   ): Promise<void> {
-    const configKey = hook.configPath
+    const configKey = `${hook.configPath}::${hook.definition.command ?? ''}`
     if (seen.has(configKey)) return
     seen.add(configKey)
 

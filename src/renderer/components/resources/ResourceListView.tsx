@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Download, Sparkles, Trash2 } from 'lucide-react'
 import type { ResourceGroupSummary, ResourceType, UiFilterState } from '@shared/types'
 import { formatDateWithRelative } from '@shared/utils.browser'
@@ -62,6 +62,8 @@ export function ResourceListView({
   const [summaries, setSummaries] = useState<ResourceGroupSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [refactorTarget, setRefactorTarget] = useState<string | null>(null)
+  const summariesRef = useRef(summaries)
+  summariesRef.current = summaries
 
   const { search, hideSingleProject, selectedProjectId, selectedCategories, sortKey, sortDir } =
     filterState
@@ -75,12 +77,14 @@ export function ResourceListView({
   const renamable = isRenamable(resourceType)
   const refactorable = isEnhancedGrid(resourceType)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
     // #region agent log
     const startedAt = Date.now()
     fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceListView.tsx:load',message:'ResourceListView getResourceStats started',data:{resourceType},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{})
     // #endregion
-    setLoading(true)
+    // Soft-refresh (scan-changed): keep existing rows visible — no Loading flash
+    const soft = opts?.soft === true && summariesRef.current.length > 0
+    if (!soft) setLoading(true)
     try {
       const stats = await window.agentManager.getResourceStats(resourceType)
       setSummaries(stats)
@@ -88,7 +92,7 @@ export function ResourceListView({
       fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceListView.tsx:load:done',message:'ResourceListView getResourceStats done',data:{resourceType,durationMs:Date.now()-startedAt,count:stats.length,names:stats.map((s)=>s.name)},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{})
       // #endregion
     } finally {
-      setLoading(false)
+      if (!soft) setLoading(false)
     }
   }, [resourceType])
 
@@ -97,7 +101,7 @@ export function ResourceListView({
   }, [load])
 
   useEffect(() => {
-    const handler = () => void load()
+    const handler = () => void load({ soft: true })
     window.addEventListener('scan-changed', handler)
     return () => window.removeEventListener('scan-changed', handler)
   }, [load])
@@ -219,7 +223,7 @@ export function ResourceListView({
 
   const handleDelete = async (name: string) => {
     const confirmed = await showMessage({
-      message: `Delete "${name}" from all locations? This cannot be undone.`,
+      message: `Delete "${name}" from all locations? Items are kept under .trash.`,
       confirm: true,
       type: 'error',
       title: 'Delete resource'
@@ -451,7 +455,7 @@ export function ResourceListView({
         selectedProjectId={selectedProjectId}
         onProjectFilterChange={(value) => onFilterChange({ selectedProjectId: value })}
       />
-      {loading ? (
+      {loading && summaries.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">Loading…</div>
       ) : (
         <ResourceTable

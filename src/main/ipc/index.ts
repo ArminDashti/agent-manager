@@ -6,6 +6,7 @@ import { createDefaultSettings } from '@shared/defaults'
 import { expandHome, stableId } from '@shared/utils'
 import { ensurePortableLayout, getLogosPath, getAppRoot } from '../app-paths'
 import { settingsStore } from '../services/settings-store'
+import { importedProjectsStore } from '../services/imported-projects-store'
 import { fileService } from '../services/file.service'
 import { scannerService } from '../services/scanner.service'
 import { assignmentService } from '../services/assignment.service'
@@ -42,7 +43,8 @@ export function registerIpc(): void {
   ipcMain.handle('settings:reset', () => {
     const defaults = createDefaultSettings()
     settingsStore.save(defaults)
-    return defaults
+    // Imported projects live in imported-projects.json — reset must not clear them.
+    return settingsStore.get()
   })
 
   ipcMain.handle('github:validatePat', async (_e, pat: string) => validatePat(pat))
@@ -266,7 +268,7 @@ export function registerIpc(): void {
 
   ipcMain.handle('projects:import', async (_e, paths: string[]) => {
     const previousIds = new Set(
-      settingsStore.get().projectRoots.flatMap((r) => r.projects.map((p) => p.id))
+      importedProjectsStore.get().flatMap((r) => r.projects.map((p) => p.id))
     )
     const collected: Array<{ id: string; name: string; path: string; rootId: string }> = []
 
@@ -284,24 +286,21 @@ export function registerIpc(): void {
       }
     }
 
-    const seen = new Set(settingsStore.get().projectRoots.flatMap((r) => r.projects.map((p) => p.id)))
+    const seen = new Set(importedProjectsStore.get().flatMap((r) => r.projects.map((p) => p.id)))
     const newProjects = collected.filter((p) => !seen.has(p.id))
     if (newProjects.length === 0) return { imported: 0, projects: [] }
 
     await projectBootstrapService.bootstrapProjects(newProjects.map((p) => p.path))
 
     const rootId = uuidv4()
-    settingsStore.update((s) => ({
-      ...s,
-      projectRoots: [
-        ...s.projectRoots,
-        {
-          id: rootId,
-          scanPath: paths[0] ?? 'imported',
-          projects: newProjects.map((p) => ({ ...p, rootId }))
-        }
-      ]
-    }))
+    importedProjectsStore.update((roots) => [
+      ...roots,
+      {
+        id: rootId,
+        scanPath: paths[0] ?? 'imported',
+        projects: newProjects.map((p) => ({ ...p, rootId }))
+      }
+    ])
 
     const newProjectIds = newProjects.filter((p) => !previousIds.has(p.id)).map((p) => p.id)
     await resourceService.syncMandatoryForNewProjects(newProjectIds)
@@ -311,15 +310,14 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('projects:remove', async (_e, projectId: string) => {
-    settingsStore.update((s) => {
-      const projectRoots = s.projectRoots
+    importedProjectsStore.update((roots) =>
+      roots
         .map((root) => ({
           ...root,
           projects: root.projects.filter((p) => p.id !== projectId)
         }))
         .filter((root) => root.projects.length > 0)
-      return { ...s, projectRoots }
-    })
+    )
     stopFileWatcher()
     startFileWatcher()
     return true
@@ -327,17 +325,16 @@ export function registerIpc(): void {
 
   ipcMain.handle('projectRoot:add', async (_e, scanPath: string) => {
     const previousIds = new Set(
-      settingsStore.get().projectRoots.flatMap((r) => r.projects.map((p) => p.id))
+      importedProjectsStore.get().flatMap((r) => r.projects.map((p) => p.id))
     )
     const projects = await scannerService.discoverGitProjects(scanPath)
     await projectBootstrapService.bootstrapProjects(projects.map((p) => p.path))
     const id = uuidv4()
-    settingsStore.update((s) => ({
-      ...s,
-      projectRoots: [...s.projectRoots, { id, scanPath, projects }]
-    }))
+    importedProjectsStore.update((roots) => [...roots, { id, scanPath, projects }])
     const newProjectIds = projects.filter((p) => !previousIds.has(p.id)).map((p) => p.id)
     await resourceService.syncMandatoryForNewProjects(newProjectIds)
+    stopFileWatcher()
+    startFileWatcher()
     return { id, projects }
   })
 

@@ -1,6 +1,9 @@
-import { readFile, writeFile, readdir, stat, mkdir, copyFile, rm } from 'fs/promises'
+import { readFile, writeFile, readdir, stat, mkdir, copyFile, rm, rename } from 'fs/promises'
 import { existsSync } from 'fs'
 import { basename, dirname, extname, join } from 'path'
+import { getTrashPath } from '../app-paths'
+
+export type TrashResourceKind = 'skills' | 'rules' | 'hooks' | 'subAgents' | 'tools'
 
 export class FileService {
   async readText(filePath: string): Promise<string> {
@@ -79,6 +82,66 @@ export class FileService {
     }
   }
 
+  /**
+   * Soft-delete: move into `.trash/<kind>/<name>__<timestamp>/` and write meta.json.
+   * Returns the trash directory path.
+   */
+  async moveToTrash(
+    sourcePath: string,
+    kind: TrashResourceKind,
+    name: string,
+    meta: Record<string, unknown> = {}
+  ): Promise<string | null> {
+    if (!existsSync(sourcePath)) return null
+
+    const safeName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'item'
+    const trashDir = getTrashPath(kind, `${safeName}__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+    await mkdir(trashDir, { recursive: true })
+
+    const destPath = join(trashDir, basename(sourcePath))
+    try {
+      await rename(sourcePath, destPath)
+    } catch {
+      // Cross-device rename can fail — fall back to copy + remove.
+      const info = await stat(sourcePath)
+      if (info.isDirectory()) {
+        await this.copyDirectory(sourcePath, destPath)
+      } else {
+        await copyFile(sourcePath, destPath)
+      }
+      await this.removePath(sourcePath)
+    }
+
+    const payload = {
+      originalPath: sourcePath,
+      name,
+      kind,
+      deletedAt: new Date().toISOString(),
+      ...meta
+    }
+    await writeFile(join(trashDir, 'meta.json'), JSON.stringify(payload, null, 2), 'utf-8')
+    return trashDir
+  }
+
+  /** Write meta-only trash entry (e.g. hook config snippet without a file move). */
+  async writeTrashMeta(
+    kind: TrashResourceKind,
+    name: string,
+    meta: Record<string, unknown>
+  ): Promise<string> {
+    const safeName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'item'
+    const trashDir = getTrashPath(kind, `${safeName}__${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+    await mkdir(trashDir, { recursive: true })
+    const payload = {
+      name,
+      kind,
+      deletedAt: new Date().toISOString(),
+      ...meta
+    }
+    await writeFile(join(trashDir, 'meta.json'), JSON.stringify(payload, null, 2), 'utf-8')
+    return trashDir
+  }
+
   fileName(path: string): string {
     return basename(path)
   }
@@ -96,7 +159,6 @@ export class FileService {
   async renamePath(from: string, to: string): Promise<void> {
     if (!existsSync(from)) return
     await mkdir(dirname(to), { recursive: true })
-    const { rename } = await import('fs/promises')
     await rename(from, to)
   }
 }

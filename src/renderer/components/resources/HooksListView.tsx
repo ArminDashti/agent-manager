@@ -238,7 +238,7 @@ export function HooksListView({
         selectedProjectId={selectedProjectId}
         onProjectFilterChange={(value) => onFilterChange({ selectedProjectId: value })}
       />
-      {loading ? (
+      {loading && summaries.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">Loading…</div>
       ) : sections.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">No hooks found</div>

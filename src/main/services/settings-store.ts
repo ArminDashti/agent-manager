@@ -4,6 +4,7 @@ import type { AppSettings } from '@shared/types'
 import { PLATFORM_IDS } from '@shared/types'
 import { ruleDisplayName } from '@shared/rule-names'
 import { getSettingsPath } from '../app-paths'
+import { importedProjectsStore } from './imported-projects-store'
 
 let cached: AppSettings | null = null
 
@@ -67,40 +68,69 @@ function migrateSettings(settings: AppSettings): AppSettings {
   return merged
 }
 
+function withImportedProjects(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    projectRoots: importedProjectsStore.get()
+  }
+}
+
+function stripProjectRoots(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    projectRoots: []
+  }
+}
+
 export class SettingsStore {
   load(): AppSettings {
-    if (cached) return cached
+    if (cached) return withImportedProjects(cached)
 
     const path = getSettingsPath()
     if (existsSync(path)) {
       try {
         const raw = readFileSync(path, 'utf-8')
-        cached = migrateSettings(JSON.parse(raw) as AppSettings)
-        return cached
+        const loaded = migrateSettings(JSON.parse(raw) as AppSettings)
+        const legacyRoots = loaded.projectRoots ?? []
+        const migrated = importedProjectsStore.migrateFromSettings(legacyRoots)
+        if (migrated || legacyRoots.length > 0) {
+          // Keep projectRoots out of settings.json once the dedicated file owns them.
+          cached = stripProjectRoots(loaded)
+          writeFileSync(getSettingsPath(), JSON.stringify(cached, null, 2), 'utf-8')
+        } else {
+          cached = stripProjectRoots(loaded)
+        }
+        return withImportedProjects(cached)
       } catch {
         cached = createDefaultSettings()
-        return cached
+        return withImportedProjects(cached)
       }
     }
 
     cached = createDefaultSettings()
-    this.save(cached)
-    return cached
+    this.persistDisk(cached)
+    return withImportedProjects(cached)
   }
 
   save(settings: AppSettings): void {
-    cached = settings
-    writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8')
+    // Never persist projectRoots into settings.json — imported-projects.json owns them.
+    // Also ignore any stale projectRoots from the renderer so saveSettings cannot wipe imports.
+    cached = stripProjectRoots(settings)
+    this.persistDisk(cached)
   }
 
   update(mutator: (settings: AppSettings) => AppSettings): AppSettings {
-    const next = mutator(this.load())
+    const next = mutator(this.get())
     this.save(next)
-    return next
+    return this.get()
   }
 
   get(): AppSettings {
     return this.load()
+  }
+
+  private persistDisk(settings: AppSettings): void {
+    writeFileSync(getSettingsPath(), JSON.stringify(stripProjectRoots(settings), null, 2), 'utf-8')
   }
 }
 

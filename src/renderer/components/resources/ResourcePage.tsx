@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ResourceType, UiFilterState } from '@shared/types'
+import type { UiFilterState } from '@shared/types'
 import { ResourceListView } from './ResourceListView'
 import { HooksListView } from './HooksListView'
 import { ResourceAssignView } from './ResourceAssignView'
@@ -29,6 +29,8 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
   const [addOpen, setAddOpen] = useState(false)
   const [summaries, setSummaries] = useState<Awaited<ReturnType<typeof window.agentManager.getResourceStats>>>([])
   const [loading, setLoading] = useState(true)
+  const summariesRef = useRef(summaries)
+  summariesRef.current = summaries
 
   const storageKey = filterStorageKey(resourceType)
   const [filterState, setFilterState] = useState<UiFilterState>(() =>
@@ -71,13 +73,15 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
     [persistFilters]
   )
 
-  const loadSummaries = useCallback(async () => {
+  const loadSummaries = useCallback(async (opts?: { soft?: boolean }) => {
     if (resourceType !== 'hook') return
     // #region agent log
     const startedAt = Date.now()
     fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'082fb2'},body:JSON.stringify({sessionId:'082fb2',location:'ResourcePage.tsx:loadSummaries',message:'ResourcePage getResourceStats started',data:{resourceType,runId:'post-fix'},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{})
     // #endregion
-    setLoading(true)
+    // Soft-refresh (scan-changed): keep existing rows visible — no Loading flash
+    const soft = opts?.soft === true && summariesRef.current.length > 0
+    if (!soft) setLoading(true)
     try {
       const stats = await window.agentManager.getResourceStats(resourceType)
       setSummaries(stats)
@@ -85,7 +89,7 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
       fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'082fb2'},body:JSON.stringify({sessionId:'082fb2',location:'ResourcePage.tsx:loadSummaries:done',message:'ResourcePage getResourceStats done',data:{resourceType,durationMs:Date.now()-startedAt,count:stats.length,runId:'post-fix'},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{})
       // #endregion
     } finally {
-      setLoading(false)
+      if (!soft) setLoading(false)
     }
   }, [resourceType])
 
@@ -94,7 +98,7 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
   }, [loadSummaries])
 
   useEffect(() => {
-    const handler = () => void loadSummaries()
+    const handler = () => void loadSummaries({ soft: true })
     window.addEventListener('scan-changed', handler)
     return () => window.removeEventListener('scan-changed', handler)
   }, [loadSummaries])
@@ -115,7 +119,7 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
 
   const handleDelete = async (name: string) => {
     const confirmed = await showMessage({
-      message: `Delete "${name}" from all locations? This cannot be undone.`,
+      message: `Delete "${name}" from all locations? Items are kept under .trash.`,
       confirm: true,
       type: 'error',
       title: 'Delete resource'
@@ -126,31 +130,9 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
     await refreshScan()
   }
 
-  if (view === 'assign' && activeName) {
-    return (
-      <ResourceAssignView
-        resourceType={resourceType}
-        resourceName={activeName}
-        onBack={() => {
-          setView('list')
-          setActiveName(null)
-        }}
-        onSaved={() => void refreshScan()}
-      />
-    )
-  }
-
-  if (view === 'edit' && activeName) {
-    return (
-      <ResourceEditView
-        resourceType={resourceType}
-        resourceName={activeName}
-        onBack={() => {
-          setView('list')
-          setActiveName(null)
-        }}
-      />
-    )
+  const backToList = () => {
+    setView('list')
+    setActiveName(null)
   }
 
   const listProps = {
@@ -168,23 +150,45 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
     onAdd: showAdd && isCreatableResourceType(resourceType) ? () => setAddOpen(true) : undefined
   }
 
+  // Keep list mounted under edit/assign so overflow scroll position is preserved on back
   return (
-    <>
-      {resourceType === 'hook' ? (
-        <HooksListView
-          summaries={summaries}
-          loading={loading}
-          {...listProps}
-          onRename={handleRename}
-          onDelete={handleDelete}
-        />
-      ) : (
-        <ResourceListView
-          title={title}
-          subtitle={subtitle}
-          resourceType={resourceType}
-          {...listProps}
-        />
+    <div className="relative flex flex-col h-full min-h-0">
+      <div className="flex flex-col h-full min-h-0">
+        {resourceType === 'hook' ? (
+          <HooksListView
+            summaries={summaries}
+            loading={loading}
+            {...listProps}
+            onRename={handleRename}
+            onDelete={handleDelete}
+          />
+        ) : (
+          <ResourceListView
+            title={title}
+            subtitle={subtitle}
+            resourceType={resourceType}
+            {...listProps}
+          />
+        )}
+      </div>
+      {view === 'assign' && activeName && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-zinc-950">
+          <ResourceAssignView
+            resourceType={resourceType}
+            resourceName={activeName}
+            onBack={backToList}
+            onSaved={() => void refreshScan()}
+          />
+        </div>
+      )}
+      {view === 'edit' && activeName && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-zinc-950">
+          <ResourceEditView
+            resourceType={resourceType}
+            resourceName={activeName}
+            onBack={backToList}
+          />
+        </div>
       )}
       {addOpen && isCreatableResourceType(resourceType) && (
         <AddResourceModal
@@ -200,6 +204,6 @@ export function ResourcePage({ title, subtitle, resourceType, showAdd = false }:
           }}
         />
       )}
-    </>
+    </div>
   )
 }

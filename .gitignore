@@ -4,6 +4,7 @@ release
 dist
 data
 settings.json
+imported-projects.json
 settings.secret
 *.log
 .DS_Store
