@@ -3,6 +3,12 @@
 ```
 agent-manager/
 ├── install.ps1              # npm install, build, deploy portable layout
+├── .cursor/skills/
+│   ├── code-removal/SKILL.md
+│   ├── skills-style-format/SKILL.md
+│   └── docker-deploy/
+│       ├── SKILL.md         # Create/edit .deploy/docker run scripts
+│       └── samples/         # Templates: local/server .ps1 + .yaml
 ├── docs/                    # Project documentation
 ├── resources/
 │   ├── logos/               # Bundled platform SVG logos

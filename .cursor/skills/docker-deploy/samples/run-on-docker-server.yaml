@@ -1,0 +1,22 @@
+# Sample remote deploy settings — copy to .deploy/docker/ and adapt.
+# Scripts read this file only (no CLI -- flags).
+# Fill ssh / ssh_key with real values before running; leave placeholders until then.
+
+stack_name: myapp
+image_tag: myapp:latest
+compose_file: docker-compose.yml
+docker_network: myapp-net
+# Usually "" on remote when traffic enters via reverse proxy / sslh
+api_publish_port: ""
+delete_volume: "no"
+delete_image: "no"
+
+# Alias mode (preferred): "ssh <alias>" + private key path
+# Password mode: "host@user@password" (ssh_key unused)
+ssh: "ssh <alias>"
+ssh_key: "<path-to-private-key>"
+
+remote_work_dir: "/home/<user>/docker/myapp"
+sync_items:
+  - docker-compose.yml
+  - run-on-docker-server.yaml
