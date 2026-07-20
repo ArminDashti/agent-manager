@@ -44,9 +44,5 @@
     "subAgents": {},
     "tools": {}
   },
-  "resourceCategories": {
-    "skills": {},
-    "rules": {}
-  },
   "uiFilters": {}
 }

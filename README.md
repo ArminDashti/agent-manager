@@ -4,7 +4,7 @@ Windows Electron app for managing **Skills**, **Rules**, **MCPs**, **Hooks**, **
 
 ## Features
 
-- Portable layout: `Janus.exe` + `settings.json` + `mcps/` + `logos/` + `data/`
+- Portable layout: `Janus.exe` + `settings.json` (+ `imported-projects.json`, `categories.json` created on first launch; runtime data in user profile)
 - Local-first editing with **Edit (.md)** and **Preview (.md)** modes
 - Public Hub catalog from `https://github.com/armindashti/janus-hub`
 - Personal Repo Bank backup via git
@@ -44,7 +44,7 @@ Build output in `release/` (Janus.exe + settings.json only).
 Janus/
 ├── Janus.exe
 ├── settings.json
-├── mcps/
-├── logos/
-└── data/
+├── imported-projects.json   # created on first launch
+├── categories.json          # created on first launch
+└── .trash/                  # created on first launch
 ```

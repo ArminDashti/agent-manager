@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Download, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowDownToLine, Wand2, Trash } from 'lucide-react'
 import type { ResourceGroupSummary, ResourceType, UiFilterState } from '@shared/types'
 import { formatDateWithRelative } from '@shared/utils.browser'
 import { ResourceTable } from './ResourceTable'
@@ -9,6 +9,7 @@ import { ALL_PROJECTS_KEY } from './ProjectFilterDropdown'
 import { UNCATEGORIZED_KEY } from './CategoryFilterDropdown'
 import { showMessage } from '@renderer/stores/messageStore'
 import { useAppStore } from '@renderer/stores/appStore'
+import { matchesProjectUsageFilter } from '@renderer/lib/filter-utils'
 
 type ListableResourceType = Exclude<ResourceType, 'mcp'>
 
@@ -65,7 +66,7 @@ export function ResourceListView({
   const summariesRef = useRef(summaries)
   summariesRef.current = summaries
 
-  const { search, hideSingleProject, selectedProjectId, selectedCategories, sortKey, sortDir } =
+  const { search, projectUsageFilter, selectedProjectId, selectedCategories, sortKey, sortDir } =
     filterState
   const selectedCategorySet = useMemo(
     () => new Set(selectedCategories),
@@ -78,19 +79,11 @@ export function ResourceListView({
   const refactorable = isEnhancedGrid(resourceType)
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
-    // #region agent log
-    const startedAt = Date.now()
-    fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceListView.tsx:load',message:'ResourceListView getResourceStats started',data:{resourceType},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{})
-    // #endregion
-    // Soft-refresh (scan-changed): keep existing rows visible — no Loading flash
     const soft = opts?.soft === true && summariesRef.current.length > 0
     if (!soft) setLoading(true)
     try {
       const stats = await window.agentManager.getResourceStats(resourceType)
       setSummaries(stats)
-      // #region agent log
-      fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceListView.tsx:load:done',message:'ResourceListView getResourceStats done',data:{resourceType,durationMs:Date.now()-startedAt,count:stats.length,names:stats.map((s)=>s.name)},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{})
-      // #endregion
     } finally {
       if (!soft) setLoading(false)
     }
@@ -132,8 +125,8 @@ export function ResourceListView({
     if (enhanced && selectedProjectId !== ALL_PROJECTS_KEY) {
       rows = rows.filter((r) => r.assignedProjectIds.includes(selectedProjectId))
     }
-    if (hideSingleProject) {
-      rows = rows.filter((r) => r.usedProjectCount !== 1)
+    if (projectUsageFilter !== 'both') {
+      rows = rows.filter((r) => matchesProjectUsageFilter(r.usedProjectCount, projectUsageFilter))
     }
     if (showCategory && selectedCategorySet.size > 0) {
       rows = rows.filter((r) => {
@@ -164,25 +157,11 @@ export function ResourceListView({
           return a.name.localeCompare(b.name) * dir
       }
     })
-    // #region agent log
-    void window.agentManager.debugLog('B', 'ResourceListView.tsx:filtered', 'filter/sort result', {
-      resourceType,
-      summariesCount: summaries.length,
-      filteredCount: sorted.length,
-      search,
-      hideSingleProject,
-      selectedProjectId,
-      selectedCategories: [...selectedCategorySet],
-      lastNames: sorted.slice(-5).map((r) => r.name),
-      runId: 'post-fix'
-    })
-    fetch('http://127.0.0.1:7919/ingest/7067de5c-1d6a-4e66-b02e-a794cb173e15',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c00194'},body:JSON.stringify({sessionId:'c00194',location:'ResourceListView.tsx:filtered',message:'filter/sort result',data:{resourceType,summariesCount:summaries.length,filteredCount:sorted.length,search,hideSingleProject,selectedProjectId,selectedCategories:[...selectedCategorySet],lastNames:sorted.slice(-5).map((r)=>r.name),runId:'post-fix'},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{})
-    // #endregion
     return sorted
   }, [
     summaries,
     search,
-    hideSingleProject,
+    projectUsageFilter,
     selectedCategorySet,
     selectedProjectId,
     sortKey,
@@ -236,60 +215,48 @@ export function ResourceListView({
 
   const stopProp = (e: React.MouseEvent) => e.stopPropagation()
 
-  const installColumn = {
-    key: 'assign',
+  const actionsColumn = {
+    key: 'actions',
     label: '',
-    className: 'w-20',
+    className: 'w-28',
     render: (row: ResourceGroupSummary) => (
-      <button
-        type="button"
-        onClick={(e) => {
-          stopProp(e)
-          onAssign(row.name)
-        }}
-        className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-blue-400"
-        title="Install"
-      >
-        <Download size={14} />
-      </button>
-    )
-  }
-
-  const refactorColumn = {
-    key: 'refactor',
-    label: '',
-    className: 'w-20',
-    render: (row: ResourceGroupSummary) => (
-      <button
-        type="button"
-        onClick={(e) => {
-          stopProp(e)
-          setRefactorTarget(row.name)
-        }}
-        className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-violet-400"
-        title="Refactor by OpenRouter"
-      >
-        <Sparkles size={14} />
-      </button>
-    )
-  }
-
-  const deleteColumn = {
-    key: 'delete',
-    label: '',
-    className: 'w-20',
-    render: (row: ResourceGroupSummary) => (
-      <button
-        type="button"
-        onClick={(e) => {
-          stopProp(e)
-          void handleDelete(row.name)
-        }}
-        className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-red-400"
-        title="Delete"
-      >
-        <Trash2 size={14} />
-      </button>
+      <div className="flex items-center gap-0.5 whitespace-nowrap">
+        <button
+          type="button"
+          onClick={(e) => {
+            stopProp(e)
+            onAssign(row.name)
+          }}
+          className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"
+          title="Install"
+        >
+          <ArrowDownToLine size={15} strokeWidth={1.75} />
+        </button>
+        {refactorable && (
+          <button
+            type="button"
+            onClick={(e) => {
+              stopProp(e)
+              setRefactorTarget(row.name)
+            }}
+            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"
+            title="Refactor by OpenRouter"
+          >
+            <Wand2 size={15} strokeWidth={1.75} />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            stopProp(e)
+            void handleDelete(row.name)
+          }}
+          className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-red-400"
+          title="Delete"
+        >
+          <Trash size={15} strokeWidth={1.75} />
+        </button>
+      </div>
     )
   }
 
@@ -324,6 +291,7 @@ export function ResourceListView({
     key: 'name',
     label: 'Name',
     sortable: true,
+    className: 'min-w-[16rem] w-[22rem]',
     render: (row: ResourceGroupSummary) =>
       renamable ? (
         <input
@@ -338,7 +306,7 @@ export function ResourceListView({
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur()
           }}
-          className="w-full bg-transparent border border-transparent hover:border-zinc-700 focus:border-zinc-600 rounded px-1 py-0.5 text-sm font-medium text-zinc-200"
+          className="w-full min-w-[14rem] bg-transparent border border-transparent hover:border-zinc-700 focus:border-zinc-600 rounded px-1 py-0.5 text-sm font-medium text-zinc-200"
         />
       ) : (
         <span className="font-medium text-zinc-200">{row.name}</span>
@@ -347,20 +315,6 @@ export function ResourceListView({
 
   const enhancedBaseColumns = [
     nameColumn,
-    {
-      key: 'description',
-      label: 'Description',
-      sortable: true,
-      className: 'max-w-xs',
-      render: (row: ResourceGroupSummary) => (
-        <span
-          className="block truncate text-zinc-400 max-w-[240px]"
-          title={row.description || undefined}
-        >
-          {row.description || '—'}
-        </span>
-      )
-    },
     {
       key: 'projects',
       label: 'Projects',
@@ -387,9 +341,7 @@ export function ResourceListView({
         <span className="text-zinc-500">{formatDateWithRelative(row.lastUpdatedAt)}</span>
       )
     },
-    installColumn,
-    ...(refactorable ? [refactorColumn] : []),
-    deleteColumn
+    actionsColumn
   ]
 
   const legacyColumns = [
@@ -420,8 +372,7 @@ export function ResourceListView({
         <span className="text-zinc-500">{formatDateWithRelative(row.lastUpdatedAt)}</span>
       )
     },
-    installColumn,
-    deleteColumn
+    actionsColumn
   ]
 
   const columns = enhanced
@@ -439,8 +390,8 @@ export function ResourceListView({
       <ResourceListToolbar
         search={search}
         onSearchChange={(value) => onFilterChange({ search: value })}
-        hideSingleProject={hideSingleProject}
-        onHideSingleProjectChange={(value) => onFilterChange({ hideSingleProject: value })}
+        projectUsageFilter={projectUsageFilter}
+        onProjectUsageFilterChange={(value) => onFilterChange({ projectUsageFilter: value })}
         onAdd={onAdd}
         selectedCategories={showCategory ? selectedCategorySet : undefined}
         onCategoryFilterChange={

@@ -1,9 +1,9 @@
-import { app, BrowserWindow, Menu, shell } from 'electron'
+import { app, BrowserWindow, Menu, shell, nativeImage } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { registerIpc } from './ipc'
 import { settingsStore } from './services/settings-store'
-import { ensurePortableLayout } from './app-paths'
+import { ensurePortableLayout, getBundledBrandingPath } from './app-paths'
 import { startFileWatcher } from './services/watcher.service'
 import { startSyncTimer } from './services/sync.service'
 import { applyStartupSetting } from './services/startup.service'
@@ -37,6 +37,9 @@ function createWindow(): void {
     ? join(__dirname, '../preload/index.mjs')
     : join(__dirname, '../preload/index.js')
 
+  const iconPath = join(getBundledBrandingPath(), 'janus-icon.png')
+  const icon = existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : undefined
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -46,6 +49,7 @@ function createWindow(): void {
     frame: false,
     titleBarStyle: 'hidden',
     title: 'Janus',
+    icon,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,

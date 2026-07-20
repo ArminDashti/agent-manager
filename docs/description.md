@@ -9,7 +9,7 @@ Windows Electron desktop app for managing AI agent resources across multiple pla
 - **Hub**: fetch public catalog from `https://github.com/armindashti/janus-hub` via HTTP
 - **OpenRouter refactor**: edit Skills, Rules, Hooks, and Sub-agents with an OpenRouter model from Settings
 - **Repo Bank** (UI: **Git Backup**): personal git backup (pull / commit & push); optional auto-sync every 30 minutes (pull then push)
-- **Portable layout**: `Janus.exe` + `settings.json` + `mcps/` + `logos/` + `data/`
+- **Portable layout**: `Janus.exe` + `settings.json` (+ runtime files created on first launch; data stored in user profile)
 - **Project-only loading**: Skills, hooks, rules, and sub-agents are discovered from imported git projects (platform dot-dirs)
 
 ## Platforms

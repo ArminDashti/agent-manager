@@ -1,12 +1,13 @@
 import { CategoryFilterDropdown } from './CategoryFilterDropdown'
 import { ProjectFilterDropdown } from './ProjectFilterDropdown'
-import type { ProjectInfo } from '@shared/types'
+import { ProjectUsageFilterGroup } from './ProjectUsageFilter'
+import type { ProjectInfo, ProjectUsageFilter } from '@shared/types'
 
 interface ResourceListToolbarProps {
   search: string
   onSearchChange: (value: string) => void
-  hideSingleProject: boolean
-  onHideSingleProjectChange: (value: boolean) => void
+  projectUsageFilter: ProjectUsageFilter
+  onProjectUsageFilterChange: (value: ProjectUsageFilter) => void
   onAdd?: () => void
   addLabel?: string
   selectedCategories?: Set<string>
@@ -21,8 +22,8 @@ interface ResourceListToolbarProps {
 export function ResourceListToolbar({
   search,
   onSearchChange,
-  hideSingleProject,
-  onHideSingleProjectChange,
+  projectUsageFilter,
+  onProjectUsageFilterChange,
   onAdd,
   addLabel = 'Add',
   selectedCategories,
@@ -34,13 +35,13 @@ export function ResourceListToolbar({
   showProjectFilter = false
 }: ResourceListToolbarProps) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 flex-wrap">
+    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-800 flex-nowrap overflow-x-auto">
       <input
         type="search"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         placeholder="Search…"
-        className="flex-1 max-w-xs bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm"
+        className="w-72 min-w-[18rem] shrink-0 bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-sm"
       />
       {showProjectFilter && onProjectFilterChange && selectedProjectId && (
         <ProjectFilterDropdown
@@ -56,20 +57,15 @@ export function ResourceListToolbar({
           onChange={onCategoryFilterChange}
         />
       )}
-      <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer select-none whitespace-nowrap">
-        <input
-          type="checkbox"
-          checked={hideSingleProject}
-          onChange={(e) => onHideSingleProjectChange(e.target.checked)}
-          className="rounded border-zinc-600 bg-zinc-900"
-        />
-        Hide resources used in only one project
-      </label>
+      <ProjectUsageFilterGroup
+        value={projectUsageFilter}
+        onChange={onProjectUsageFilterChange}
+      />
       {onAdd && (
         <button
           type="button"
           onClick={onAdd}
-          className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded"
+          className="ml-auto shrink-0 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded whitespace-nowrap"
         >
           {addLabel}
         </button>

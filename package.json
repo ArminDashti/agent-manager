@@ -75,11 +75,19 @@
         ]
       },
       {
+        "from": "resources/branding",
+        "to": "branding",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "resources/settings.template.json",
         "to": "settings.template.json"
       }
     ],
     "win": {
+      "icon": "resources/branding/janus-icon.png",
       "target": [
         {
           "target": "portable",

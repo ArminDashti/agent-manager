@@ -9,7 +9,7 @@ Resource pages (Skills, Rules, Hooks, Sub-agents, Tools) use a shared table-base
 - **Skills & Rules list view**: columns for category (inline editable, stored in settings), name, description, project usage, token estimate, last updated, all-projects toggle, install, delete. Row click opens editor. Multi-select category filter and **project filter dropdown** in toolbar. Skills without a stored category get a default from the name prefix before the first hyphen (e.g. `git-local-commit` → `git`).
 - **Hooks & Sub-agents list view**: same enhanced grid as skills/rules (description, toggle, row-click edit) with project filter; no category column
 - **Tools list view**: name, project usage, tokens, last updated, install, delete, mandatory checkbox
-- **Toolbar**: search, optional project/category filters, and a checkbox **Hide resources used in only one project** (default on; persisted in `uiFilters.hideSingleProject`)
+- **Toolbar**: search, optional project/category filters, and a **Single / Multiple / Both** Off/On toggle group for project-usage filtering (default: Multiple; persisted in `uiFilters.projectUsageFilter`)
 - **Add Skill**: larger modal (720px), select-all projects, navigates directly to editor on create (no success toast)
 - **Add Rule/Hook/Sub-agent**: standard modal with success toast
 - **Assign/Install view**: project matrix with checkboxes, sortable by name

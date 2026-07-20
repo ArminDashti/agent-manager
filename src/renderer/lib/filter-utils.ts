@@ -1,4 +1,4 @@
-import type { UiFilterState } from '@shared/types'
+import type { UiFilterState, ProjectUsageFilter } from '@shared/types'
 import { ALL_PROJECTS_KEY } from '@renderer/components/resources/ProjectFilterDropdown'
 
 export type ListableResourceType = 'skill' | 'rule' | 'hook' | 'subAgent' | 'tool'
@@ -17,7 +17,7 @@ export function filterStorageKey(resourceType: ListableResourceType): string {
 
 export const DEFAULT_UI_FILTER: UiFilterState = {
   search: '',
-  hideSingleProject: true,
+  projectUsageFilter: 'multiple',
   selectedProjectId: ALL_PROJECTS_KEY,
   selectedCategories: [],
   sortKey: 'name',
@@ -26,24 +26,40 @@ export const DEFAULT_UI_FILTER: UiFilterState = {
 
 type LegacyUiFilter = Partial<UiFilterState> & {
   filter?: 'all' | 'single-project'
+  hideSingleProject?: boolean
 }
 
 export function mergeUiFilter(partial?: Partial<UiFilterState> | LegacyUiFilter): UiFilterState {
   const legacy = (partial ?? {}) as LegacyUiFilter
-  const { filter: legacyFilter, hideSingleProject: explicitHide, ...rest } = legacy
+  const { filter: legacyFilter, hideSingleProject, projectUsageFilter, ...rest } = legacy
 
-  let hideSingleProject = DEFAULT_UI_FILTER.hideSingleProject
-  if (typeof explicitHide === 'boolean') {
-    hideSingleProject = explicitHide
+  let resolvedFilter: ProjectUsageFilter = DEFAULT_UI_FILTER.projectUsageFilter
+  if (projectUsageFilter === 'single' || projectUsageFilter === 'multiple' || projectUsageFilter === 'both') {
+    resolvedFilter = projectUsageFilter
+  } else if (typeof hideSingleProject === 'boolean') {
+    resolvedFilter = hideSingleProject ? 'multiple' : 'both'
   } else if (legacyFilter === 'single-project') {
-    // Old "show only single-project" ⇒ user wants to see singles ⇒ do not hide them
-    hideSingleProject = false
+    resolvedFilter = 'single'
   }
 
   return {
     ...DEFAULT_UI_FILTER,
     ...rest,
-    hideSingleProject,
+    projectUsageFilter: resolvedFilter,
     selectedCategories: rest.selectedCategories ?? DEFAULT_UI_FILTER.selectedCategories
+  }
+}
+
+export function matchesProjectUsageFilter(
+  usedProjectCount: number,
+  filter: ProjectUsageFilter
+): boolean {
+  switch (filter) {
+    case 'single':
+      return usedProjectCount === 1
+    case 'multiple':
+      return usedProjectCount > 1
+    case 'both':
+      return true
   }
 }

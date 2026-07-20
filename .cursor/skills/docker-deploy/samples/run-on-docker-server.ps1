@@ -5,8 +5,8 @@
 .DESCRIPTION
   Sample for .deploy/docker/run-on-docker-server.ps1.
   Reads run-on-docker-server.yaml — no CLI -- flags.
-  Flow: build locally → docker save → SCP → remote docker load → sync_items → remote compose up -d.
-  Never builds on the remote host.
+  Flow when build_image_on is local: build locally → docker save → SCP → remote docker load → sync files → remote compose up -d.
+  Flow when build_image_on is server: sync repo to remote → remote docker build → remote compose up -d.
 #>
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -38,22 +38,26 @@ CONFIG:
   Sibling file: run-on-docker-server.yaml
 
   stack_name          Compose project name (-p)
-  image_tag           Image built locally and loaded remotely
-  compose_file        Compose filename under .deploy/docker
+  image_tag           Image tag for build and compose; overrides compose when set
+  compose_file        Compose path relative to .deploy/docker
+  dockerfile          Dockerfile path relative to .deploy/docker
   docker_network      External Docker network on remote
-  api_publish_port    Host publish port; "" behind reverse proxy
+  publish_port        Optional host bind port; omit or empty = no host bind
+  internal_port       Container listen port; overrides compose when set
   delete_volume       yes/true/1/y/on → remove volumes before up
   delete_image        yes/true/1/y/on → remove image during teardown
+  build_image_on      local = build here and upload; server = build on remote
   ssh                 "ssh <alias>" or "host@user@password"
-  ssh_key             Private key path (required for alias mode)
-  remote_work_dir     Absolute remote directory for compose files
-  sync_items          List of filenames under .deploy/docker to SCP
+  volume_dir          Absolute remote directory for project + compose files
 
 NOTES:
   - No CLI -- flags. Change behavior only via YAML.
-  - Rejects placeholder ssh / ssh_key values at runtime.
+  - Non-empty override fields replace compose / Dockerfile values via env vars.
+  - Alias mode uses ~/.ssh/config (no ssh_key field).
+  - Rejects placeholder ssh values at runtime.
   - Never prints the password segment of host@user@password.
-  - Never builds on the remote host.
+  - build_image_on=local requires Docker on this machine.
+  - build_image_on=server syncs the repo to volume_dir and builds there.
 "@ -ForegroundColor Cyan
 }
 
@@ -67,41 +71,22 @@ function Test-Placeholder([string]$Value) {
     return $Value -match '<[^>]+>'
 }
 
-function Read-DeployYaml([string]$Path) {
+function Read-FlatYaml([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Missing config: $Path"
     }
     $map = @{}
-    $listKey = $null
     foreach ($raw in Get-Content -LiteralPath $Path) {
-        $line = $raw
-        $trim = $line.Trim()
-        if ($trim -eq '' -or $trim.StartsWith('#')) { continue }
-
-        if ($trim -match '^-\s+(?<item>.+)$' -and $listKey) {
-            if ($null -eq $map[$listKey]) { $map[$listKey] = New-Object System.Collections.Generic.List[string] }
-            $item = $Matches['item'].Trim()
-            if (($item.StartsWith('"') -and $item.EndsWith('"')) -or ($item.StartsWith("'") -and $item.EndsWith("'"))) {
-                $item = $item.Substring(1, $item.Length - 2)
-            }
-            [void]$map[$listKey].Add($item)
-            continue
+        $line = $raw.Trim()
+        if ($line -eq '' -or $line.StartsWith('#')) { continue }
+        if ($line -match '^\s*-') { continue }
+        if ($line -notmatch '^(?<key>[^:#]+):\s*(?<val>.*)$') { continue }
+        $key = $Matches['key'].Trim()
+        $val = $Matches['val'].Trim()
+        if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+            $val = $val.Substring(1, $val.Length - 2)
         }
-
-        if ($trim -match '^(?<key>[^:#]+):\s*(?<val>.*)$') {
-            $key = $Matches['key'].Trim()
-            $val = $Matches['val'].Trim()
-            if ($val -eq '') {
-                $listKey = $key
-                $map[$key] = New-Object System.Collections.Generic.List[string]
-                continue
-            }
-            $listKey = $null
-            if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
-                $val = $val.Substring(1, $val.Length - 2)
-            }
-            $map[$key] = $val
-        }
+        $map[$key] = $val
     }
     return $map
 }
@@ -113,25 +98,53 @@ function Require-Key($Map, [string]$Key) {
     return [string]$Map[$Key]
 }
 
+function Resolve-DeployPath([string]$RelativePath) {
+    $candidate = Join-Path $DeployDir $RelativePath
+    return (Resolve-Path -LiteralPath $candidate).Path
+}
+
+function Get-RepoRelativePath([string]$AbsolutePath) {
+    $root = $RepoRoot.TrimEnd('\', '/')
+    $path = $AbsolutePath.TrimEnd('\', '/')
+    if (-not $path.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside repo root: $AbsolutePath"
+    }
+    $relative = $path.Substring($root.Length).TrimStart('\', '/')
+    return ($relative -replace '\\', '/')
+}
+
+function Build-ComposeEnvPrefix([hashtable]$Cfg, [string]$PublishPort) {
+    $pairs = New-Object System.Collections.Generic.List[string]
+    $escapedPublish = $PublishPort.Replace("'", "'\\''")
+    [void]$pairs.Add("PUBLISH_PORT='$escapedPublish'")
+
+    $mapping = @{
+        image_tag       = 'IMAGE_TAG'
+        docker_network  = 'DOCKER_NETWORK'
+        internal_port   = 'INTERNAL_PORT'
+    }
+    foreach ($entry in $mapping.GetEnumerator()) {
+        if (-not $Cfg.ContainsKey($entry.Key)) { continue }
+        $value = [string]$Cfg[$entry.Key]
+        if ([string]::IsNullOrWhiteSpace($value)) { continue }
+        $escaped = $value.Replace("'", "'\\''")
+        [void]$pairs.Add("$($entry.Value)='$escaped'")
+    }
+    return ($pairs -join ' ') + ' '
+}
+
 function Ensure-Docker {
     docker version *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Docker CLI is not available. Start Docker Desktop / daemon.' }
 }
 
-function Parse-SshTarget([string]$SshValue, [string]$SshKey) {
+function Parse-SshTarget([string]$SshValue) {
     $value = $SshValue.Trim()
     if ($value -match '^(?i)ssh\s+(?<alias>\S+)$') {
         $alias = $Matches['alias']
-        if (Test-Placeholder $SshKey) {
-            throw 'ssh_key is required for alias mode. Set a real private key path in run-on-docker-server.yaml.'
-        }
-        if (-not (Test-Path -LiteralPath $SshKey)) {
-            throw "ssh_key file not found: $SshKey"
-        }
         return @{
             Mode      = 'alias'
             Alias     = $alias
-            KeyPath   = $SshKey
             LogTarget = "ssh $alias"
         }
     }
@@ -160,13 +173,13 @@ function Invoke-Remote {
     param($Target, [string]$RemoteCommand)
 
     if ($Target.Mode -eq 'alias') {
-        & ssh -i $Target.KeyPath -o BatchMode=yes $Target.Alias $RemoteCommand
+        & ssh -o BatchMode=yes $Target.Alias $RemoteCommand
         if ($LASTEXITCODE -ne 0) { throw "Remote command failed on $($Target.LogTarget)" }
         return
     }
 
     if (-not (Get-Command sshpass -ErrorAction SilentlyContinue)) {
-        throw 'Password mode requires sshpass on PATH (or switch YAML to ssh alias + ssh_key).'
+        throw 'Password mode requires sshpass on PATH (or switch YAML to ssh alias mode).'
     }
     $env:SSHPASS = $Target.Password
     try {
@@ -182,18 +195,40 @@ function Copy-ToRemote {
     param($Target, [string]$LocalPath, [string]$RemotePath)
 
     if ($Target.Mode -eq 'alias') {
-        & scp -i $Target.KeyPath -o BatchMode=yes $LocalPath "$($Target.Alias):$RemotePath"
+        & scp -o BatchMode=yes $LocalPath "$($Target.Alias):$RemotePath"
         if ($LASTEXITCODE -ne 0) { throw "SCP failed to $($Target.LogTarget):$RemotePath" }
         return
     }
 
     if (-not (Get-Command sshpass -ErrorAction SilentlyContinue)) {
-        throw 'Password mode requires sshpass on PATH (or switch YAML to ssh alias + ssh_key).'
+        throw 'Password mode requires sshpass on PATH (or switch YAML to ssh alias mode).'
     }
     $env:SSHPASS = $Target.Password
     try {
         & sshpass -e scp -o StrictHostKeyChecking=accept-new $LocalPath "$($Target.User)@$($Target.Host):$RemotePath"
         if ($LASTEXITCODE -ne 0) { throw "SCP failed to $($Target.LogTarget):$RemotePath" }
+    }
+    finally {
+        Remove-Item Env:SSHPASS -ErrorAction SilentlyContinue
+    }
+}
+
+function Copy-DirToRemote {
+    param($Target, [string]$LocalDir, [string]$RemoteDir)
+
+    if ($Target.Mode -eq 'alias') {
+        & scp -r -o BatchMode=yes "$LocalDir/." "$($Target.Alias):$RemoteDir/"
+        if ($LASTEXITCODE -ne 0) { throw "SCP directory failed to $($Target.LogTarget):$RemoteDir" }
+        return
+    }
+
+    if (-not (Get-Command sshpass -ErrorAction SilentlyContinue)) {
+        throw 'Password mode requires sshpass on PATH (or switch YAML to ssh alias mode).'
+    }
+    $env:SSHPASS = $Target.Password
+    try {
+        & sshpass -e scp -r -o StrictHostKeyChecking=accept-new "$LocalDir/." "$($Target.User)@$($Target.Host):$RemoteDir/"
+        if ($LASTEXITCODE -ne 0) { throw "SCP directory failed to $($Target.LogTarget):$RemoteDir" }
     }
     finally {
         Remove-Item Env:SSHPASS -ErrorAction SilentlyContinue
@@ -207,78 +242,89 @@ if ($args.Count -gt 0) {
 }
 
 try {
-    Ensure-Docker
-    $cfg = Read-DeployYaml $ConfigPath
+    $cfg = Read-FlatYaml $ConfigPath
     $stackName = Require-Key $cfg 'stack_name'
     $imageTag = Require-Key $cfg 'image_tag'
-    $composeFile = Require-Key $cfg 'compose_file'
+    $composeFileRel = Require-Key $cfg 'compose_file'
+    $dockerfileRel = Require-Key $cfg 'dockerfile'
     $network = Require-Key $cfg 'docker_network'
-    $publishPort = if ($cfg.ContainsKey('api_publish_port')) { [string]$cfg['api_publish_port'] } else { '' }
+    $publishPort = if ($cfg.ContainsKey('publish_port')) { [string]$cfg['publish_port'] } else { '' }
+    $internalPort = if ($cfg.ContainsKey('internal_port')) { [string]$cfg['internal_port'] } else { '' }
     $deleteVolume = Test-Truthy ($(if ($cfg.ContainsKey('delete_volume')) { [string]$cfg['delete_volume'] } else { 'no' }))
     $deleteImage = Test-Truthy ($(if ($cfg.ContainsKey('delete_image')) { [string]$cfg['delete_image'] } else { 'no' }))
+    $buildImageOn = if ($cfg.ContainsKey('build_image_on')) { [string]$cfg['build_image_on'] } else { 'local' }
+    $buildImageOn = $buildImageOn.Trim().ToLowerInvariant()
     $sshValue = Require-Key $cfg 'ssh'
-    $sshKey = if ($cfg.ContainsKey('ssh_key')) { [string]$cfg['ssh_key'] } else { '' }
-    $remoteWorkDir = Require-Key $cfg 'remote_work_dir'
+    $volumeDir = Require-Key $cfg 'volume_dir'
 
+    if ($buildImageOn -notin @('local', 'server')) {
+        throw "build_image_on must be 'local' or 'server'."
+    }
+    if ($buildImageOn -eq 'local') {
+        Ensure-Docker
+    }
     if (Test-Placeholder $sshValue) {
         throw 'ssh still has placeholders. Fill run-on-docker-server.yaml before server deploy.'
     }
-    if (Test-Placeholder $remoteWorkDir) {
-        throw 'remote_work_dir still has placeholders. Fill a real absolute remote path.'
+    if (Test-Placeholder $volumeDir) {
+        throw 'volume_dir still has placeholders. Fill a real absolute remote path.'
     }
 
-    $syncItems = @()
-    if ($cfg.ContainsKey('sync_items') -and $cfg['sync_items'] -is [System.Collections.IEnumerable] -and $cfg['sync_items'] -isnot [string]) {
-        $syncItems = @($cfg['sync_items'] | ForEach-Object { [string]$_ })
-    }
-    if ($syncItems.Count -eq 0) {
-        $syncItems = @($composeFile)
-    }
+    $composePath = Resolve-DeployPath $composeFileRel
+    $dockerfile = Resolve-DeployPath $dockerfileRel
+    $composeFileName = Split-Path -Leaf $composePath
+    $remoteDockerfile = Get-RepoRelativePath $dockerfile
+    $remoteCompose = "$volumeDir/$composeFileName"
 
-    $composePath = Join-Path $DeployDir $composeFile
-    $dockerfile = Join-Path $DeployDir 'Dockerfile'
-    if (-not (Test-Path -LiteralPath $composePath)) { throw "Compose file not found: $composePath" }
-    if (-not (Test-Path -LiteralPath $dockerfile)) { throw "Dockerfile not found: $dockerfile" }
-
-    $target = Parse-SshTarget -SshValue $sshValue -SshKey $sshKey
+    $target = Parse-SshTarget -SshValue $sshValue
     Write-Step "Remote target: $($target.LogTarget)"
-    Write-Step "Stack=$stackName image=$imageTag workdir=$remoteWorkDir"
+    Write-Step "Stack=$stackName image=$imageTag build_image_on=$buildImageOn volume_dir=$volumeDir publish_port='$publishPort' internal_port='$internalPort'"
 
-    Write-Step "Building $imageTag locally (context=$RepoRoot)"
-    docker build -f $dockerfile -t $imageTag $RepoRoot
-    if ($LASTEXITCODE -ne 0) { throw 'docker build failed' }
-    Write-Ok "Built $imageTag"
+    Write-Step "Ensuring remote volume dir $volumeDir"
+    Invoke-Remote -Target $target -RemoteCommand "mkdir -p '$volumeDir'"
 
-    $tarName = ($imageTag -replace '[:/]', '_') + '.tar'
-    $tarPath = Join-Path $env:TEMP $tarName
-    Write-Step "Saving image to $tarPath"
-    docker save -o $tarPath $imageTag
-    if ($LASTEXITCODE -ne 0) { throw 'docker save failed' }
+    if ($buildImageOn -eq 'server') {
+        Write-Step "Syncing repo to $volumeDir for remote build"
+        Copy-DirToRemote -Target $target -LocalDir $RepoRoot -RemoteDir $volumeDir
+        Write-Ok 'Repo synced to remote'
+    }
+    else {
+        Write-Step "Building $imageTag locally (dockerfile=$dockerfile context=$RepoRoot)"
+        docker build -f $dockerfile -t $imageTag $RepoRoot
+        if ($LASTEXITCODE -ne 0) { throw 'docker build failed' }
+        Write-Ok "Built $imageTag"
 
-    $remoteTar = "/tmp/$tarName"
-    Write-Step "Uploading image to $($target.LogTarget)"
-    Copy-ToRemote -Target $target -LocalPath $tarPath -RemotePath $remoteTar
-    Invoke-Remote -Target $target -RemoteCommand "docker load -i $remoteTar && rm -f $remoteTar"
-    Write-Ok 'Image loaded on remote'
-    Remove-Item -LiteralPath $tarPath -Force -ErrorAction SilentlyContinue
+        $tarName = ($imageTag -replace '[:/]', '_') + '.tar'
+        $tarPath = Join-Path $env:TEMP $tarName
+        Write-Step "Saving image to $tarPath"
+        docker save -o $tarPath $imageTag
+        if ($LASTEXITCODE -ne 0) { throw 'docker save failed' }
 
-    Write-Step "Ensuring remote work dir $remoteWorkDir"
-    Invoke-Remote -Target $target -RemoteCommand "mkdir -p '$remoteWorkDir'"
+        $remoteTar = "/tmp/$tarName"
+        Write-Step "Uploading image to $($target.LogTarget)"
+        Copy-ToRemote -Target $target -LocalPath $tarPath -RemotePath $remoteTar
+        Invoke-Remote -Target $target -RemoteCommand "docker load -i $remoteTar && rm -f $remoteTar"
+        Write-Ok 'Image loaded on remote'
+        Remove-Item -LiteralPath $tarPath -Force -ErrorAction SilentlyContinue
 
-    foreach ($item in $syncItems) {
-        $localItem = Join-Path $DeployDir $item
-        if (-not (Test-Path -LiteralPath $localItem)) { throw "sync_items entry not found: $localItem" }
-        $remoteItem = "$remoteWorkDir/$item"
-        Write-Step "Sync $item"
-        Copy-ToRemote -Target $target -LocalPath $localItem -RemotePath $remoteItem
+        $syncItems = @(
+            $composeFileName
+            'run-on-docker-server.yaml'
+        )
+        foreach ($item in $syncItems) {
+            $localItem = if ($item -eq $composeFileName) { $composePath } else { Join-Path $DeployDir $item }
+            if (-not (Test-Path -LiteralPath $localItem)) { throw "Sync source not found: $localItem" }
+            $remoteItem = "$volumeDir/$item"
+            Write-Step "Sync $item"
+            Copy-ToRemote -Target $target -LocalPath $localItem -RemotePath $remoteItem
+        }
     }
 
-    $remoteCompose = "$remoteWorkDir/$composeFile"
     $downFlags = if ($deleteVolume) { '-v' } else { '' }
 
     if ($deleteVolume -or $deleteImage) {
         Write-Step 'Remote compose down'
-        Invoke-Remote -Target $target -RemoteCommand "docker compose -p '$stackName' -f '$remoteCompose' --project-directory '$remoteWorkDir' down $downFlags"
+        Invoke-Remote -Target $target -RemoteCommand "docker compose -p '$stackName' -f '$remoteCompose' --project-directory '$volumeDir' down $downFlags"
     }
 
     if ($deleteImage) {
@@ -286,13 +332,24 @@ try {
         Invoke-Remote -Target $target -RemoteCommand "docker image rm -f '$imageTag' || true"
     }
 
+    if ($buildImageOn -eq 'server') {
+        Write-Step "Building $imageTag on remote (dockerfile=$remoteDockerfile context=$volumeDir)"
+        Invoke-Remote -Target $target -RemoteCommand "docker build -f '$volumeDir/$remoteDockerfile' -t '$imageTag' '$volumeDir'"
+        Write-Ok "Built $imageTag on remote"
+    }
+
     Write-Step "Ensuring remote network $network"
     Invoke-Remote -Target $target -RemoteCommand "docker network inspect '$network' >/dev/null 2>&1 || docker network create '$network'"
 
-    Write-Step 'Remote compose up -d (no remote build)'
-    $exportPrefix = "IMAGE_TAG='$imageTag' DOCKER_NETWORK='$network' API_PUBLISH_PORT='$publishPort'"
-    Invoke-Remote -Target $target -RemoteCommand "$exportPrefix docker compose -p '$stackName' -f '$remoteCompose' --project-directory '$remoteWorkDir' up -d"
-    Write-Ok "Stack deployed at $remoteWorkDir on $($target.LogTarget)"
+    $envPrefix = Build-ComposeEnvPrefix @{
+        image_tag      = $imageTag
+        docker_network = $network
+        internal_port  = $internalPort
+    } $publishPort
+
+    Write-Step 'Remote compose up -d'
+    Invoke-Remote -Target $target -RemoteCommand "${envPrefix}docker compose -p '$stackName' -f '$remoteCompose' --project-directory '$volumeDir' up -d"
+    Write-Ok "Stack deployed at $volumeDir on $($target.LogTarget)"
 }
 catch {
     Write-Fail $_.Exception.Message

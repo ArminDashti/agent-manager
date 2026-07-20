@@ -43,13 +43,16 @@ export interface ProjectRootConfig {
 
 export interface UiFilterState {
   search: string
-  /** When true, hide resources used in exactly one project. */
-  hideSingleProject: boolean
+  /** @deprecated use projectUsageFilter */
+  hideSingleProject?: boolean
+  projectUsageFilter: ProjectUsageFilter
   selectedProjectId: string
   selectedCategories: string[]
   sortKey: string
   sortDir: 'asc' | 'desc'
 }
+
+export type ProjectUsageFilter = 'single' | 'multiple' | 'both'
 
 export interface AppSettings {
   window: { maximized: boolean }

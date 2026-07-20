@@ -85,6 +85,12 @@ export interface AgentManagerApi {
   repoBankFetch: () => Promise<string>
   repoBankCommitPush: (message: string) => Promise<void>
   getLogoPath: (platformId: string) => Promise<string | null>
+  getBrandingPath: (name: 'janus-icon' | 'janus-logo') => Promise<string | null>
+  purgePlatformsFromProjects: (platformIds: PlatformId[]) => Promise<{
+    projectsAffected: number
+    foldersRemoved: string[]
+    errors: string[]
+  }>
   minimizeWindow: () => Promise<boolean>
   maximizeWindow: () => Promise<boolean>
   closeWindow: () => Promise<boolean>
@@ -139,6 +145,9 @@ const api: AgentManagerApi = {
   repoBankFetch: () => ipcRenderer.invoke('repoBank:fetch'),
   repoBankCommitPush: (message) => ipcRenderer.invoke('repoBank:commitPush', message),
   getLogoPath: (platformId) => ipcRenderer.invoke('logos:getPath', platformId),
+  getBrandingPath: (name) => ipcRenderer.invoke('branding:getPath', name),
+  purgePlatformsFromProjects: (platformIds) =>
+    ipcRenderer.invoke('platform:purgeFromProjects', platformIds),
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),

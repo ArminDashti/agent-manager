@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FolderOpen } from 'lucide-react'
+import { Folder } from 'lucide-react'
 import type { AppSettings, PlatformConfig, PlatformId } from '@shared/types'
 import {
   DEFAULT_PLATFORM_ROOTS,
@@ -70,10 +70,13 @@ function PlatformCard({
           onChange={(enabled) => onUpdate({ enabled })}
           title={platform.enabled ? 'Disable platform' : 'Enable platform'}
         />
+        <span className="text-xs text-zinc-500 w-6 text-right shrink-0">
+          {platform.enabled ? 'On' : 'Off'}
+        </span>
       </div>
 
       <div className="flex items-center gap-2">
-        <FolderOpen size={14} className="text-zinc-500 shrink-0" />
+        <Folder size={14} strokeWidth={1.75} className="text-zinc-500 shrink-0" />
         <input
           value={platform.rootPath}
           onChange={(e) => onUpdate({ rootPath: e.target.value })}
@@ -118,6 +121,31 @@ export function PlatformsTab({ settings, onChange }: PlatformsTabProps) {
   const browseDir = async (id: PlatformId) => {
     const dir = await window.agentManager.openDirectory()
     if (dir) updatePlatform(id, { rootPath: dir })
+  }
+
+  const removeFromProjects = async () => {
+    const disabled = platforms.filter((p) => !p.enabled).map((p) => p.id)
+    if (disabled.length === 0) {
+      await showMessage({ message: 'No disabled platforms to remove.', type: 'info' })
+      return
+    }
+
+    const labels = disabled.map((id) => PLATFORM_LABELS[id]).join(', ')
+    const confirmed = await showMessage({
+      message: `Remove platform folders from all imported projects for: ${labels}?`,
+      confirm: true
+    })
+    if (!confirmed) return
+
+    const result = await window.agentManager.purgePlatformsFromProjects(disabled)
+    const msg =
+      result.errors.length > 0
+        ? `Removed ${result.foldersRemoved.length} folder(s) from ${result.projectsAffected} project(s). ${result.errors.length} error(s).`
+        : `Removed ${result.foldersRemoved.length} folder(s) from ${result.projectsAffected} project(s).`
+    await showMessage({
+      message: msg,
+      type: result.errors.length > 0 ? 'error' : 'success'
+    })
   }
 
   const savePlatforms = async () => {
@@ -181,18 +209,27 @@ export function PlatformsTab({ settings, onChange }: PlatformsTabProps) {
         </section>
       </div>
 
-      <div className="sticky bottom-0 -mx-6 px-6 py-4 bg-zinc-950/95 border-t border-zinc-800 flex items-center justify-between">
+      <div className="sticky bottom-0 -mx-6 px-6 py-4 bg-zinc-950/95 border-t border-zinc-800 flex items-center justify-between gap-3">
         <span className={cn('text-xs', dirty ? 'text-amber-400' : 'text-zinc-500')}>
           {dirty ? 'Unsaved changes' : 'All changes saved'}
         </span>
-        <button
-          type="button"
-          onClick={() => void savePlatforms()}
-          disabled={!dirty}
-          className="px-4 py-2 text-sm bg-emerald-700 hover:bg-emerald-600 rounded disabled:opacity-40"
-        >
-          Save platforms
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void removeFromProjects()}
+            className="px-4 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 rounded"
+          >
+            Remove from projects
+          </button>
+          <button
+            type="button"
+            onClick={() => void savePlatforms()}
+            disabled={!dirty}
+            className="px-4 py-2 text-sm bg-emerald-700 hover:bg-emerald-600 rounded disabled:opacity-40"
+          >
+            Save platforms
+          </button>
+        </div>
       </div>
     </div>
   )

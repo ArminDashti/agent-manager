@@ -1,6 +1,6 @@
 # Main process
 
-- `app-paths.ts`: resolves portable root from exe; seeds `mcps/`, `data/hub-cache`, `data/repo-bank`, and `logos/`
+- `app-paths.ts`: resolves portable root from exe; creates `imported-projects.json`, `categories.json`, `.trash/`; runtime data in Electron userData
 - `ipc/index.ts`: includes temporary `debug:log` IPC for session debug NDJSON (remove after investigation)
 - `settings-store.ts`: read/write `settings.json`; migrates removed platforms and merges defaults for Codex/Grok/OpenRouter
 - `startup.service.ts`: applies Windows/macOS login-item setting from `settings.startup.runOnLogin`

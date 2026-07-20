@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     Cleans release/, runs npm run dist, keeps only Janus.exe and settings.json
-    in release/, then deploys the full portable layout to -Dir (default: project root).
+    in release/, then deploys to -Dir (default: project root).
 
 .PARAMETER Dir
     Install destination directory. Defaults to the project root ($PSScriptRoot).
@@ -31,13 +31,6 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = $PSScriptRoot
 $ReleaseDir = Join-Path $RepoRoot 'release'
 
-$InstallDirs = @(
-    'mcps',
-    'logos',
-    'data/hub-cache',
-    'data/repo-bank'
-)
-
 function Show-Help {
     Write-Host ''
     Write-Host 'install.ps1' -ForegroundColor Cyan
@@ -57,14 +50,14 @@ function Show-Help {
     Write-Host '  3. Remove all files and folders in release/'
     Write-Host '  4. Run npm run dist (electron-vite build + electron-builder)'
     Write-Host '  5. Clean release/ to Janus.exe + settings.json only'
-    Write-Host '  6. Deploy to install directory with folder skeleton'
+    Write-Host '  6. Deploy to install directory'
     Write-Host ''
     Write-Host 'Build output:' -ForegroundColor Yellow
     Write-Host "  $ReleaseDir\Janus.exe"
     Write-Host "  $ReleaseDir\settings.json"
     Write-Host ''
     Write-Host 'Install layout:' -ForegroundColor Yellow
-    Write-Host '  Janus.exe, settings.json, mcps/, logos/, data/'
+    Write-Host '  Janus.exe, settings.json (+ runtime files created on first launch)'
     Write-Host ''
 }
 
@@ -83,17 +76,6 @@ function Write-Step {
     $percent = [int](($Step / $Total) * 100)
     Write-Progress -Activity 'Janus install' -Status $Message -PercentComplete $percent
     Write-Host "[$Step/$Total] $Message" -ForegroundColor Cyan
-}
-
-function Ensure-InstallSkeleton {
-    param([string]$TargetRoot)
-
-    foreach ($rel in $InstallDirs) {
-        $full = Join-Path $TargetRoot $rel
-        if (-not (Test-Path $full)) {
-            New-Item -ItemType Directory -Path $full -Force | Out-Null
-        }
-    }
 }
 
 function Deploy-Release {
@@ -119,8 +101,6 @@ function Deploy-Release {
     else {
         Write-Host '  settings.json already exists; left unchanged.' -ForegroundColor DarkGray
     }
-
-    Ensure-InstallSkeleton -TargetRoot $TargetDir
 }
 
 $totalSteps = 6
@@ -209,4 +189,4 @@ Write-Host ''
 Write-Host 'Install completed successfully.' -ForegroundColor Green
 Write-Host "  Build:   $exePath" -ForegroundColor Green
 Write-Host "  Install: $installDir" -ForegroundColor Green
-Write-Host '  Layout:  Janus.exe, settings.json, mcps/, logos/, data/' -ForegroundColor Green
+Write-Host '  Layout:  Janus.exe, settings.json (+ runtime files on first launch)' -ForegroundColor Green

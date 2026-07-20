@@ -21,6 +21,7 @@ import { fileService, type TrashResourceKind } from './file.service'
 import { assignmentService } from './assignment.service'
 import { scannerService } from './scanner.service'
 import { settingsStore } from './settings-store'
+import { categoriesStore } from './categories-store'
 import { repoBankService } from './repo-bank.service'
 import { withQuietWatch } from './watcher.service'
 import { withSkillSyncPaused } from './skill-sync.service'
@@ -342,16 +343,7 @@ export class ResourceService {
     }
 
     if (resourceType === 'skill' && Object.keys(categoriesToPersist).length > 0) {
-      settingsStore.update((s) => ({
-        ...s,
-        resourceCategories: {
-          ...s.resourceCategories,
-          skills: {
-            ...(s.resourceCategories?.skills ?? {}),
-            ...categoriesToPersist
-          }
-        }
-      }))
+      categoriesStore.mergeDerivedSkills(categoriesToPersist)
     }
 
     const sorted = summaries.sort((a, b) => a.name.localeCompare(b.name))
@@ -518,12 +510,8 @@ export class ResourceService {
         const nextMandatory = { ...(s.mandatoryForAllProjects?.[MANDATORY_KEY[resourceType]] ?? {}) }
         delete nextMandatory[resourceName]
 
-        const nextCategories = { ...s.resourceCategories }
         if (resourceType === 'skill' || resourceType === 'rule') {
-          const catKey = CATEGORY_KEY[resourceType]
-          const cats = { ...nextCategories[catKey] }
-          delete cats[resourceName]
-          nextCategories[catKey] = cats
+          categoriesStore.removeCategory(resourceType, resourceName)
         }
 
         return {
@@ -532,8 +520,7 @@ export class ResourceService {
           mandatoryForAllProjects: {
             ...s.mandatoryForAllProjects,
             [MANDATORY_KEY[resourceType]]: nextMandatory
-          },
-          resourceCategories: nextCategories
+          }
         }
       })
     })
@@ -544,17 +531,7 @@ export class ResourceService {
     resourceName: string,
     category: string
   ): Promise<void> {
-    const catKey = CATEGORY_KEY[resourceType]
-    settingsStore.update((s) => ({
-      ...s,
-      resourceCategories: {
-        ...s.resourceCategories,
-        [catKey]: {
-          ...(s.resourceCategories?.[catKey] ?? {}),
-          [resourceName]: category.trim()
-        }
-      }
-    }))
+    categoriesStore.setCategory(resourceType, resourceName, category)
   }
 
   private async trashHookInstance(hook: HookResource, resourceName: string): Promise<void> {
@@ -1049,15 +1026,8 @@ export class ResourceService {
         delete mandatory[oldName]
       }
 
-      let resourceCategories = s.resourceCategories
       if (resourceType === 'skill' || resourceType === 'rule') {
-        const catKey = CATEGORY_KEY[resourceType]
-        const cats = { ...(s.resourceCategories?.[catKey] ?? {}) }
-        if (cats[oldName] !== undefined) {
-          cats[newName] = cats[oldName]
-          delete cats[oldName]
-        }
-        resourceCategories = { ...s.resourceCategories, [catKey]: cats }
+        categoriesStore.renameCategory(resourceType, oldName, newName)
       }
 
       return {
@@ -1065,8 +1035,7 @@ export class ResourceService {
         mandatoryForAllProjects: {
           ...s.mandatoryForAllProjects,
           [mandatoryKey]: mandatory
-        },
-        resourceCategories
+        }
       }
     })
   }

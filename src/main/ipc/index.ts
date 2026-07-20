@@ -4,7 +4,7 @@ import { join, basename } from 'path'
 import type { AppSettings, HubResourceType, PlatformId, ResourceType } from '@shared/types'
 import { createDefaultSettings } from '@shared/defaults'
 import { expandHome, stableId } from '@shared/utils'
-import { ensurePortableLayout, getLogosPath, getAppRoot } from '../app-paths'
+import { ensurePortableLayout, getLogosPath, getBrandingPath, getAppRoot } from '../app-paths'
 import { settingsStore } from '../services/settings-store'
 import { importedProjectsStore } from '../services/imported-projects-store'
 import { fileService } from '../services/file.service'
@@ -13,6 +13,7 @@ import { assignmentService } from '../services/assignment.service'
 import { resourceService } from '../services/resource.service'
 import { hubService } from '../services/hub.service'
 import { repoBankService } from '../services/repo-bank.service'
+import { platformCleanupService } from '../services/platform-cleanup.service'
 import { projectBootstrapService } from '../services/project-bootstrap.service'
 import { startFileWatcher, stopFileWatcher } from '../services/watcher.service'
 import { restartSyncTimer } from '../services/sync.service'
@@ -237,6 +238,10 @@ export function registerIpc(): void {
     }
   )
 
+  ipcMain.handle('platform:purgeFromProjects', async (_e, platformIds: PlatformId[]) => {
+    return platformCleanupService.purgeFromProjects(platformIds)
+  })
+
   ipcMain.handle('platform:add', async (_e, id: PlatformId, rootPath: string) => {
     settingsStore.update((s) => {
       const existing = s.platforms.find((p) => p.id === id)
@@ -409,6 +414,13 @@ export function registerIpc(): void {
     const svg = join(logosDir, `${platformId}.svg`)
     if (existsSync(png)) return png
     if (existsSync(svg)) return svg
+    return null
+  })
+
+  ipcMain.handle('branding:getPath', (_e, name: 'janus-icon' | 'janus-logo') => {
+    const brandingDir = getBrandingPath()
+    const png = join(brandingDir, `${name}.png`)
+    if (existsSync(png)) return png
     return null
   })
 

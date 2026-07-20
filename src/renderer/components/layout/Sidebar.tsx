@@ -1,81 +1,43 @@
 import { useEffect, useState } from 'react'
 
 import {
-
-  Sparkles,
-
-  ScrollText,
-
-  Webhook,
-
+  Layers,
+  FileText,
+  GitBranch,
   Bot,
-
-  Plug,
-
-  Wrench,
-
-  CloudDownload,
-
-  Settings,
-
-  Info,
-
+  Cable,
+  Hammer,
+  Download,
+  Settings2,
+  CircleHelp,
   ChevronLeft,
-
   ChevronRight
-
 } from 'lucide-react'
-
 import { cn } from '@renderer/lib/utils'
-
 import { CollapsibleNavGroup } from './CollapsibleNavGroup'
-
 import type { PageId } from '@renderer/stores/appStore'
-
-
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
 
-
-
 interface NavItem {
-
   id: PageId
-
   label: string
-
-  icon: typeof Sparkles
-
+  icon: typeof Layers
 }
 
-
-
 const resourceNav: NavItem[] = [
-
-  { id: 'skills', label: 'Skills', icon: Sparkles },
-
-  { id: 'rules', label: 'Rules', icon: ScrollText },
-
-  { id: 'hooks', label: 'Hooks', icon: Webhook },
-
+  { id: 'skills', label: 'Skills', icon: Layers },
+  { id: 'rules', label: 'Rules', icon: FileText },
+  { id: 'hooks', label: 'Hooks', icon: GitBranch },
   { id: 'subagents', label: 'Sub-agents', icon: Bot },
-
-  { id: 'mcps', label: 'MCPs', icon: Plug },
-
-  { id: 'tools', label: 'Tools', icon: Wrench }
-
+  { id: 'mcps', label: 'MCPs', icon: Cable },
+  { id: 'tools', label: 'Tools', icon: Hammer }
 ]
 
-
-
 const otherNav: NavItem[] = [
-
-  { id: 'hub', label: 'Hub', icon: CloudDownload },
-
-  { id: 'settings', label: 'Settings', icon: Settings },
-
-  { id: 'about', label: 'About', icon: Info }
-
+  { id: 'hub', label: 'Hub', icon: Download },
+  { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'about', label: 'About', icon: CircleHelp }
 ]
 
 
@@ -140,7 +102,7 @@ function NavButton({
 
     >
 
-      <Icon size={16} className="shrink-0" />
+          <Icon size={16} strokeWidth={1.75} className="shrink-0" />
 
       {!collapsed && <span className="truncate">{item.label}</span>}
 

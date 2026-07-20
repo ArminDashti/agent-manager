@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash } from 'lucide-react'
 import { JsonEditor } from '@renderer/components/JsonEditor'
 import { ResourceTable } from '@renderer/components/resources/ResourceTable'
 import { ResourceSubViewHeader } from '@renderer/components/resources/ResourceListView'
@@ -186,33 +186,28 @@ export function McpsPage() {
       )
     },
     {
-      key: 'edit',
+      key: 'actions',
       label: '',
-      className: 'w-16',
+      className: 'w-20',
       render: (row: McpResource) => (
-        <button
-          type="button"
-          onClick={() => openEdit(row)}
-          className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400"
-          title="Edit"
-        >
-          <Pencil size={14} />
-        </button>
-      )
-    },
-    {
-      key: 'delete',
-      label: '',
-      className: 'w-16',
-      render: (row: McpResource) => (
-        <button
-          type="button"
-          onClick={() => void handleDelete(row)}
-          className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-red-400"
-          title="Delete"
-        >
-          <Trash2 size={14} />
-        </button>
+        <div className="flex items-center gap-0.5 whitespace-nowrap">
+          <button
+            type="button"
+            onClick={() => openEdit(row)}
+            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"
+            title="Edit"
+          >
+            <Pencil size={15} strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDelete(row)}
+            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-red-400"
+            title="Delete"
+          >
+            <Trash size={15} strokeWidth={1.75} />
+          </button>
+        </div>
       )
     }
   ]

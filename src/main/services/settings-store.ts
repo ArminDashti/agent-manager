@@ -5,6 +5,7 @@ import { PLATFORM_IDS } from '@shared/types'
 import { ruleDisplayName } from '@shared/rule-names'
 import { getSettingsPath } from '../app-paths'
 import { importedProjectsStore } from './imported-projects-store'
+import { categoriesStore } from './categories-store'
 
 let cached: AppSettings | null = null
 
@@ -27,17 +28,6 @@ function migrateSettings(settings: AppSettings): AppSettings {
     rules: migrateRuleKeys({
       ...defaults.mandatoryForAllProjects.rules,
       ...(settings.mandatoryForAllProjects?.rules ?? {})
-    })
-  }
-
-  merged.resourceCategories = {
-    skills: {
-      ...defaults.resourceCategories.skills,
-      ...(settings.resourceCategories?.skills ?? {})
-    },
-    rules: migrateRuleKeys({
-      ...defaults.resourceCategories.rules,
-      ...(settings.resourceCategories?.rules ?? {})
     })
   }
 
@@ -75,47 +65,56 @@ function withImportedProjects(settings: AppSettings): AppSettings {
   }
 }
 
-function stripProjectRoots(settings: AppSettings): AppSettings {
+function withCategories(settings: AppSettings): AppSettings {
   return {
     ...settings,
-    projectRoots: []
+    resourceCategories: categoriesStore.toAppSettingsShape()
   }
+}
+
+function stripPersistedFields(settings: AppSettings): AppSettings {
+  const { projectRoots: _roots, resourceCategories: _cats, ...rest } = settings
+  return { ...rest, projectRoots: [], resourceCategories: { skills: {}, rules: {} } }
 }
 
 export class SettingsStore {
   load(): AppSettings {
-    if (cached) return withImportedProjects(cached)
+    if (cached) return withCategories(withImportedProjects(cached))
 
     const path = getSettingsPath()
     if (existsSync(path)) {
       try {
         const raw = readFileSync(path, 'utf-8')
-        const loaded = migrateSettings(JSON.parse(raw) as AppSettings)
-        const legacyRoots = loaded.projectRoots ?? []
-        const migrated = importedProjectsStore.migrateFromSettings(legacyRoots)
-        if (migrated || legacyRoots.length > 0) {
-          // Keep projectRoots out of settings.json once the dedicated file owns them.
-          cached = stripProjectRoots(loaded)
-          writeFileSync(getSettingsPath(), JSON.stringify(cached, null, 2), 'utf-8')
-        } else {
-          cached = stripProjectRoots(loaded)
+        const parsed = JSON.parse(raw) as AppSettings
+        const loaded = migrateSettings(parsed)
+
+        const legacyRoots = parsed.projectRoots ?? []
+        importedProjectsStore.migrateFromSettings(legacyRoots)
+
+        const categoriesMigrated = categoriesStore.migrateFromSettings(
+          parsed.resourceCategories
+        )
+
+        cached = stripPersistedFields(loaded)
+
+        if (legacyRoots.length > 0 || categoriesMigrated) {
+          writeFileSync(getSettingsPath(), `${JSON.stringify(cached, null, 2)}\n`, 'utf-8')
         }
-        return withImportedProjects(cached)
+
+        return withCategories(withImportedProjects(cached))
       } catch {
         cached = createDefaultSettings()
-        return withImportedProjects(cached)
+        return withCategories(withImportedProjects(cached))
       }
     }
 
     cached = createDefaultSettings()
     this.persistDisk(cached)
-    return withImportedProjects(cached)
+    return withCategories(withImportedProjects(cached))
   }
 
   save(settings: AppSettings): void {
-    // Never persist projectRoots into settings.json — imported-projects.json owns them.
-    // Also ignore any stale projectRoots from the renderer so saveSettings cannot wipe imports.
-    cached = stripProjectRoots(settings)
+    cached = stripPersistedFields(settings)
     this.persistDisk(cached)
   }
 
@@ -130,7 +129,11 @@ export class SettingsStore {
   }
 
   private persistDisk(settings: AppSettings): void {
-    writeFileSync(getSettingsPath(), JSON.stringify(stripProjectRoots(settings), null, 2), 'utf-8')
+    writeFileSync(
+      getSettingsPath(),
+      `${JSON.stringify(stripPersistedFields(settings), null, 2)}\n`,
+      'utf-8'
+    )
   }
 }
 
