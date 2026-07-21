@@ -16,7 +16,7 @@ All channels exposed via `window.agentManager` (preload `contextBridge`).
 |---------|-----------|-------------|
 | `app:getRoot` | invoke | Portable app root directory |
 | `settings:get` | invoke | Load `settings.json` |
-| `settings:save` | invoke | Save settings |
+| `settings:save` | invoke | Save settings; when platforms change, syncs enabled platform folders + project resources |
 | `settings:reset` | invoke | Reset to defaults |
 | `pat:get` / `pat:set` | invoke | GitHub PAT via keytar |
 | `github:validatePat` | invoke | Validate GitHub PAT |
@@ -29,14 +29,14 @@ All channels exposed via `window.agentManager` (preload `contextBridge`).
 | `dialog:openDirectory` | invoke | Native folder picker |
 | `dialog:openDirectories` | invoke | Multi-select folder picker |
 | `assign:targets` | invoke | Assign targets for resource type |
-| `resource:stats` | invoke | Grouped resource summaries (tokens, project usage, etc.) |
-| `assign:getProjectMatrix` | invoke | Project assignment matrix for a resource |
+| `resource:stats` | invoke | Grouped resource summaries (tokens, project usage, `groupKey`; skills group by `name::contentHash`) |
+| `assign:getProjectMatrix` | invoke | Project assignment matrix for a resource (`resourceName` is `groupKey` for skills) |
 | `assign:apply` | invoke | Apply project assignment checkboxes |
 | `assign:setMandatory` | invoke | Toggle mandatory-for-all-projects; auto-assigns when enabled |
 | `resource:setCategory` | invoke | Set skill/rule category in settings |
 | `resource:delete` | invoke | Delete resource from disk |
 | `resource:create` | invoke | Create skill/rule/hook/subAgent in project `.cursor` + repo bank |
-| `resource:getCanonical` | invoke | Get canonical instance for edit view |
+| `resource:getCanonical` | invoke | Get canonical instance for edit view (skills: pass `groupKey`) |
 | `mcp:add` | invoke | Add MCP server entry to platform mcp.json |
 | `mcp:delete` | invoke | Remove MCP server from mcp.json |
 | `platform:add` | invoke | Add/update platform path |

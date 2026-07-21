@@ -13,6 +13,7 @@ import type {
 } from '@shared/types'
 import { CURSOR_ONLY_RESOURCES, PROJECT_ONLY_RESOURCES } from '@shared/types'
 import { ruleBaseName, ruleFileNameForPlatform } from '@shared/rule-names'
+import { skillContentHash } from '@shared/utils'
 import { fileService } from './file.service'
 import { getAdapter } from '../platforms'
 import { settingsStore } from './settings-store'
@@ -209,7 +210,18 @@ export class AssignmentService {
     if (!adapter) return
     const settings = settingsStore.get()
     const destRoot = this.resolvePaths(adapter, target, settings).skillsDirs[0]
-    await fileService.copyDirectory(skill.rootPath, join(destRoot, skill.name))
+    const destPath = join(destRoot, skill.name)
+    const destSkillMd = join(destPath, 'SKILL.md')
+    if (existsSync(destSkillMd)) {
+      const existingText = await fileService.readText(destSkillMd)
+      const existingHash = skillContentHash(existingText)
+      if (existingHash !== skill.contentHash) {
+        throw new Error(
+          `Cannot assign "${skill.name}": target already has a different SKILL.md (unique skill with the same name).`
+        )
+      }
+    }
+    await fileService.copyDirectory(skill.rootPath, destPath)
   }
 
   async assignRule(rule: RuleResource, target: AssignTarget): Promise<void> {

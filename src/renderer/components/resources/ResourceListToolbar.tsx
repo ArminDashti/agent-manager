@@ -35,7 +35,7 @@ export function ResourceListToolbar({
   showProjectFilter = false
 }: ResourceListToolbarProps) {
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-800 flex-nowrap overflow-x-auto">
+    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-800 flex-nowrap overflow-visible">
       <input
         type="search"
         value={search}

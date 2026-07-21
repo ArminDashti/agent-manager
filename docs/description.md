@@ -14,7 +14,7 @@ Windows Electron desktop app for managing AI agent resources across multiple pla
 
 ## Platforms
 
-Antigravity, Codex, Copilot, Cursor, Devin, Grok. Cursor supports hooks and sub-agents; others support skills, rules, MCPs, and tools at platform level (MCPs/tools only for platform scan).
+Adapters remain for Antigravity, Codex, Copilot, Cursor, Devin, and Grok, but **only Cursor is enabled**. Settings → Platforms shows a single locked Cursor card (path read-only). On load/save, other platforms are forced `enabled: false`. Startup sync scaffolds Cursor folders in imported projects and copies project-assigned resources into them.
 
 ## Stack
 

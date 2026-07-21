@@ -19,7 +19,7 @@ agent-manager/
 │   │   ├── app-paths.ts     # Portable path resolution
 │   │   ├── ipc/index.ts     # IPC handlers
 │   │   ├── platforms/       # Platform adapters (6 platforms)
-│   │   └── services/        # Scanner, bootstrap, file, hub, openrouter, repo bank, resource, skill-sync, assignment, watcher
+│   │   └── services/        # Scanner, bootstrap, platform-sync, file, hub, openrouter, repo bank, resource, skill-sync, assignment, watcher
 │   ├── preload/index.ts     # contextBridge API
 │   ├── renderer/            # React UI (9 pages)
 │   │   ├── components/layout/     # TitleBar, Sidebar, resizable panel layouts

@@ -112,6 +112,8 @@ export interface SkillResource {
   name: string
   rootPath: string
   skillMdPath: string
+  /** sha256 hex of SKILL.md contents; same name + different hash = unique skills */
+  contentHash: string
   files: string[]
   source: ResourceSource
   enabled: boolean
@@ -234,6 +236,10 @@ export interface ProjectMatrixRow {
 
 export interface ResourceGroupSummary {
   name: string
+  /** Stable group identity; for skills is `name::contentHash`, otherwise equals name */
+  groupKey: string
+  /** Present for skills; used to disambiguate duplicate folder names in the UI */
+  contentHash?: string
   usedProjectCount: number
   totalProjectCount: number
   assignedProjectIds: string[]

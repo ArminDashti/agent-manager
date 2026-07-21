@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectMatrixRow, ResourceType } from '@shared/types'
+import { skillFolderNameFromKey } from '@shared/utils.browser'
 import { ResourceSubViewHeader } from './ResourceListView'
 import { ResourceTable } from './ResourceTable'
 import { showMessage } from '@renderer/stores/messageStore'
@@ -78,7 +79,7 @@ export function ResourceAssignView({
 
   const handleSave = async () => {
     const confirmed = await showMessage({
-      message: `Save project assignments for "${resourceName}"?`,
+      message: `Save project assignments for "${skillFolderNameFromKey(resourceName)}"?`,
       confirm: true
     })
     if (!confirmed) return
@@ -133,7 +134,10 @@ export function ResourceAssignView({
 
   return (
     <div className="flex flex-col h-full">
-      <ResourceSubViewHeader title={`Assign: ${resourceName}`} onBack={onBack} />
+      <ResourceSubViewHeader
+        title={`Assign: ${skillFolderNameFromKey(resourceName)}`}
+        onBack={onBack}
+      />
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">Loading…</div>
       ) : (

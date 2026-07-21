@@ -5,14 +5,18 @@ import { GeneralTab } from '@renderer/components/settings/GeneralTab'
 import { StorageTab } from '@renderer/components/settings/StorageTab'
 import { PlatformsTab } from '@renderer/components/settings/PlatformsTab'
 import { OpenRouterTab } from '@renderer/components/settings/OpenRouterTab'
+import { ProjectImportSection } from '@renderer/components/settings/ProjectImportSection'
+import { HubTab } from '@renderer/components/settings/HubTab'
 
-type SettingsTab = 'general' | 'storage' | 'platforms' | 'openRouter'
+type SettingsTab = 'general' | 'storage' | 'platforms' | 'openRouter' | 'projects' | 'hub'
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: 'general', label: 'General' },
   { id: 'storage', label: 'Storage' },
   { id: 'platforms', label: 'Platforms' },
-  { id: 'openRouter', label: 'OpenRouter' }
+  { id: 'openRouter', label: 'OpenRouter' },
+  { id: 'projects', label: 'Projects' },
+  { id: 'hub', label: 'Hub' }
 ]
 
 export function SettingsPage() {
@@ -63,6 +67,14 @@ export function SettingsPage() {
       )}
       {tab === 'openRouter' && (
         <OpenRouterTab settings={localSettings} onChange={setLocalSettings} />
+      )}
+      {tab === 'projects' && (
+        <div className="space-y-6">
+          <ProjectImportSection settings={localSettings} onChange={setLocalSettings} />
+        </div>
+      )}
+      {tab === 'hub' && (
+        <HubTab settings={localSettings} onChange={setLocalSettings} />
       )}
     </div>
   )

@@ -39,6 +39,17 @@ function migrateSettings(settings: AppSettings): AppSettings {
       if (defaultPlatform) merged.platforms.push(defaultPlatform)
     }
   }
+  // Product rule: only Cursor is enabled; Settings Platforms UI is frozen to Cursor.
+  merged.platforms = merged.platforms.map((p) => {
+    if (p.id === 'cursor') {
+      return {
+        ...p,
+        enabled: true,
+        rootPath: p.rootPath.trim() || defaults.platforms.find((d) => d.id === 'cursor')!.rootPath
+      }
+    }
+    return { ...p, enabled: false }
+  })
 
   merged.uiFilters = {
     ...defaults.uiFilters,
@@ -97,7 +108,8 @@ export class SettingsStore {
 
         cached = stripPersistedFields(loaded)
 
-        if (legacyRoots.length > 0 || categoriesMigrated) {
+        const platformsMigrated = JSON.stringify(parsed.platforms) !== JSON.stringify(cached.platforms)
+        if (legacyRoots.length > 0 || categoriesMigrated || platformsMigrated) {
           writeFileSync(getSettingsPath(), `${JSON.stringify(cached, null, 2)}\n`, 'utf-8')
         }
 
@@ -114,7 +126,7 @@ export class SettingsStore {
   }
 
   save(settings: AppSettings): void {
-    cached = stripPersistedFields(settings)
+    cached = stripPersistedFields(migrateSettings(settings))
     this.persistDisk(cached)
   }
 

@@ -3,8 +3,9 @@ import { existsSync } from 'fs'
 import { join, basename } from 'path'
 import type { AppSettings, HubResourceType, PlatformId, ResourceType } from '@shared/types'
 import { createDefaultSettings } from '@shared/defaults'
-import { expandHome, stableId } from '@shared/utils'
-import { ensurePortableLayout, getLogosPath, getBrandingPath, getAppRoot } from '../app-paths'
+import { expandHome, skillFolderNameFromKey, stableId } from '@shared/utils'
+import { ensurePortableLayout, getLogosPath, getBrandingPath, getAppRoot, getInstructionsPath } from '../app-paths'
+import { readdirSync, mkdirSync } from 'fs'
 import { settingsStore } from '../services/settings-store'
 import { importedProjectsStore } from '../services/imported-projects-store'
 import { fileService } from '../services/file.service'
@@ -15,6 +16,7 @@ import { hubService } from '../services/hub.service'
 import { repoBankService } from '../services/repo-bank.service'
 import { platformCleanupService } from '../services/platform-cleanup.service'
 import { projectBootstrapService } from '../services/project-bootstrap.service'
+import { syncEnabledPlatformsToProjects } from '../services/platform-sync.service'
 import { startFileWatcher, stopFileWatcher } from '../services/watcher.service'
 import { restartSyncTimer } from '../services/sync.service'
 import { applyStartupSetting } from '../services/startup.service'
@@ -32,9 +34,22 @@ export function registerIpc(): void {
 
   ipcMain.handle('settings:get', () => settingsStore.get())
 
-  ipcMain.handle('settings:save', (_e, settings: AppSettings) => {
+  ipcMain.handle('settings:save', async (_e, settings: AppSettings) => {
+    const previous = settingsStore.get()
+    const platformsChanged =
+      JSON.stringify(previous.platforms) !== JSON.stringify(settings.platforms)
+
     settingsStore.save(settings)
     applyStartupSetting(settings.startup?.runOnLogin ?? false)
+
+    if (platformsChanged) {
+      try {
+        await syncEnabledPlatformsToProjects()
+      } catch (err) {
+        console.error('Platform sync after settings save failed:', err)
+      }
+    }
+
     stopFileWatcher()
     startFileWatcher()
     restartSyncTimer()
@@ -295,7 +310,14 @@ export function registerIpc(): void {
     const newProjects = collected.filter((p) => !seen.has(p.id))
     if (newProjects.length === 0) return { imported: 0, projects: [] }
 
-    await projectBootstrapService.bootstrapProjects(newProjects.map((p) => p.path))
+    const enabledIds = settingsStore
+      .get()
+      .platforms.filter((p) => p.enabled)
+      .map((p) => p.id)
+    await projectBootstrapService.bootstrapProjects(
+      newProjects.map((p) => p.path),
+      enabledIds
+    )
 
     const rootId = uuidv4()
     importedProjectsStore.update((roots) => [
@@ -333,7 +355,14 @@ export function registerIpc(): void {
       importedProjectsStore.get().flatMap((r) => r.projects.map((p) => p.id))
     )
     const projects = await scannerService.discoverGitProjects(scanPath)
-    await projectBootstrapService.bootstrapProjects(projects.map((p) => p.path))
+    const enabledIds = settingsStore
+      .get()
+      .platforms.filter((p) => p.enabled)
+      .map((p) => p.id)
+    await projectBootstrapService.bootstrapProjects(
+      projects.map((p) => p.path),
+      enabledIds
+    )
     const id = uuidv4()
     importedProjectsStore.update((roots) => [...roots, { id, scanPath, projects }])
     const newProjectIds = projects.filter((p) => !previousIds.has(p.id)).map((p) => p.id)
@@ -428,6 +457,67 @@ export function registerIpc(): void {
     stopFileWatcher()
     startFileWatcher()
     restartSyncTimer()
+  })
+
+  ipcMain.handle(
+    'file:writeSkillMd',
+    async (_e, filePath: string, content: string, currentResourceName: string) => {
+      // Parse name from frontmatter
+      const nameMatch = content.match(/^---[\s\S]*?\nname:\s*(.+)/m)
+      const frontmatterName = nameMatch ? nameMatch[1].trim() : null
+
+      // Save first
+      await fileService.writeText(filePath, content)
+
+      // If the name in frontmatter differs from the folder name, rename the resource
+      const folderName = skillFolderNameFromKey(currentResourceName)
+      if (frontmatterName && frontmatterName !== folderName) {
+        const settings = settingsStore.get()
+        const scan = await scannerService.scanAll(settings)
+        try {
+          await resourceService.renameResource(scan, 'skill', currentResourceName, frontmatterName)
+        } catch {
+          // If rename fails (e.g. already exists) ignore — file was already saved
+        }
+      }
+
+      return true
+    }
+  )
+
+  ipcMain.handle('instructions:list', () => {
+    const dir = getInstructionsPath()
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+      return []
+    }
+    return readdirSync(dir)
+      .filter((f) => f.endsWith('.md'))
+      .sort()
+  })
+
+  ipcMain.handle('instructions:read', async (_e, name: string) => {
+    const filePath = getInstructionsPath(name)
+    if (!existsSync(filePath)) return ''
+    return fileService.readText(filePath)
+  })
+
+  ipcMain.handle('instructions:save', async (_e, name: string, content: string) => {
+    const dir = getInstructionsPath()
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    await fileService.writeText(getInstructionsPath(name), content)
+    return true
+  })
+
+  ipcMain.handle('instructions:create', async (_e, name: string) => {
+    const dir = getInstructionsPath()
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const safeName = name.endsWith('.md') ? name : `${name}.md`
+    const filePath = getInstructionsPath(safeName)
+    if (!existsSync(filePath)) {
+      await fileService.writeText(filePath, `# ${name.replace(/\.md$/, '')}\n\n`)
+    }
+    return safeName
   })
 
   ensurePortableLayout()

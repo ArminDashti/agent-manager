@@ -7,6 +7,7 @@ import { ensurePortableLayout, getBundledBrandingPath } from './app-paths'
 import { startFileWatcher } from './services/watcher.service'
 import { startSyncTimer } from './services/sync.service'
 import { applyStartupSetting } from './services/startup.service'
+import { syncEnabledPlatformsToProjects } from './services/platform-sync.service'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -84,6 +85,11 @@ app.whenReady().then(async () => {
   await migratePatFromKeytar()
   const settings = settingsStore.get()
   applyStartupSetting(settings.startup?.runOnLogin ?? false)
+  try {
+    await syncEnabledPlatformsToProjects()
+  } catch (err) {
+    console.error('Platform sync on startup failed:', err)
+  }
   createWindow()
   startFileWatcher()
   startSyncTimer()

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AppSettings } from '@shared/types'
-import { isValidGithubUrl } from '@shared/utils.browser'
 import { useAppStore } from '@renderer/stores/appStore'
 import { showMessage } from '@renderer/stores/messageStore'
 import { cn } from '@renderer/lib/utils'
@@ -13,21 +12,18 @@ interface GeneralTabProps {
 export function GeneralTab({ settings, onChange }: GeneralTabProps) {
   const { loadSettings } = useAppStore()
   const [pat, setPat] = useState(settings.github?.pat ?? '')
-  const [hubBase, setHubBase] = useState(settings.hub.baseUrl)
   const [runOnLogin, setRunOnLogin] = useState(settings.startup?.runOnLogin ?? false)
   const [syncEnabled, setSyncEnabled] = useState(settings.sync?.enabled ?? true)
   const [syncInterval, setSyncInterval] = useState(settings.sync?.intervalMinutes ?? 30)
 
   useEffect(() => {
     setPat(settings.github?.pat ?? '')
-    setHubBase(settings.hub.baseUrl)
     setRunOnLogin(settings.startup?.runOnLogin ?? false)
     setSyncEnabled(settings.sync?.enabled ?? true)
     setSyncInterval(settings.sync?.intervalMinutes ?? 30)
   }, [settings])
 
   const patValid = settings.github?.patValid ?? false
-  const hubUrlValid = isValidGithubUrl(hubBase)
 
   const saveGeneral = async () => {
     const confirmed = await showMessage({
@@ -46,11 +42,6 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
         patValidatedAt: validation.valid ? new Date().toISOString() : null
       },
       startup: { runOnLogin },
-      hub: {
-        ...settings.hub,
-        baseUrl: hubBase,
-        catalogUrl: `${hubBase.replace(/\/$/, '')}/hub/manifest.json`
-      },
       sync: {
         enabled: syncEnabled,
         intervalMinutes: syncInterval,
@@ -61,18 +52,6 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
     onChange(next)
     await loadSettings()
     await showMessage({ message: 'Settings saved', type: 'success' })
-  }
-
-  const fetchHub = async () => {
-    try {
-      await window.agentManager.hubFetchCatalog()
-      await showMessage({ message: 'Hub catalog fetched', type: 'success' })
-    } catch (e) {
-      await showMessage({
-        message: e instanceof Error ? e.message : 'Hub fetch failed',
-        type: 'error'
-      })
-    }
   }
 
   return (
@@ -91,23 +70,6 @@ export function GeneralTab({ settings, onChange }: GeneralTabProps) {
         ) : (
           <p className="text-xs text-zinc-500">Save to validate your PAT</p>
         )}
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="text-sm font-medium text-zinc-400 uppercase">Hub</h3>
-        <input
-          value={hubBase}
-          onChange={(e) => setHubBase(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm"
-        />
-        <button
-          type="button"
-          onClick={() => void fetchHub()}
-          disabled={!hubUrlValid}
-          className="px-4 py-2 text-sm bg-zinc-800 rounded disabled:opacity-40"
-        >
-          Fetch Hub
-        </button>
       </section>
 
       <section className="space-y-3">

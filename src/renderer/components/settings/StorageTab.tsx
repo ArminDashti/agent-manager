@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import type { AppSettings } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 import { showMessage } from '@renderer/stores/messageStore'
-import { ProjectImportSection } from './ProjectImportSection'
-
 interface StorageTabProps {
   settings: AppSettings
   onChange: (settings: AppSettings) => void
@@ -94,8 +92,6 @@ export function StorageTab({ settings, onChange }: StorageTabProps) {
           <p className="text-xs text-amber-500">Save a valid GitHub PAT in General settings first</p>
         )}
       </section>
-
-      <ProjectImportSection settings={settings} onChange={onChange} />
 
       <button type="button" onClick={() => void saveStorage()} className="px-4 py-2 text-sm bg-emerald-700 rounded">
         Save storage settings

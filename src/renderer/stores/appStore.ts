@@ -10,6 +10,7 @@ export type PageId =
   | 'tools'
   | 'hub'
   | 'settings'
+  | 'instructions'
   | 'about'
 
 interface AppState {

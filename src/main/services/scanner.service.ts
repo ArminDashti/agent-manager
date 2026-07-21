@@ -13,13 +13,14 @@ import type {
   SubAgentResource,
   ToolResource
 } from '@shared/types'
-import { parseFrontmatter, stableId } from '@shared/utils'
+import { parseFrontmatter, skillContentHash, stableId } from '@shared/utils'
 import { fileService } from './file.service'
 import { getAdapter } from '../platforms'
 import type { PlatformAdapter, PlatformPaths } from '../platforms/types'
 import { supportsResource } from '../platforms/types'
 import { probeMcpServers } from './mcp-probe.service'
 import { agentDebugLog } from './debug-log'
+import { seedSkillContentHashes } from './skill-sync.service'
 
 const PLATFORM_SCAN_TYPES: ResourceType[] = ['mcp', 'tool']
 
@@ -134,6 +135,10 @@ export class ScannerService {
       await this.probeMcps(result)
     }
 
+    seedSkillContentHashes(
+      result.skills.map((s) => ({ rootPath: s.rootPath, contentHash: s.contentHash }))
+    )
+
     // #region agent log
     agentDebugLog('A', 'scanner.service.ts:scanAll:end', 'scanAll finished', {
       totalMs: Date.now() - scanStartedAt,
@@ -217,12 +222,14 @@ export class ScannerService {
           const skillMd = join(dir, 'SKILL.md')
           if (!existsSync(skillMd)) continue
           const files = await fileService.listFilesRecursive(dir)
+          const skillMdText = await fileService.readText(skillMd)
           const id = stableId(source.id, dir)
           result.skills.push({
             id,
             name: basename(dir),
             rootPath: dir,
             skillMdPath: skillMd,
+            contentHash: skillContentHash(skillMdText),
             files,
             source,
             enabled: settings.assignments.skills[id]?.includes(source.id) ?? true

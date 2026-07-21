@@ -6,7 +6,10 @@ export {
   isMarkdownFile,
   parseFrontmatter,
   defaultCategoryFromName,
-  HUB_TYPE_FOLDERS
+  HUB_TYPE_FOLDERS,
+  skillGroupKey,
+  parseSkillGroupKey,
+  skillFolderNameFromKey
 } from './utils.browser'
 
 export function expandHome(input: string): string {
@@ -21,6 +24,11 @@ export function expandHome(input: string): string {
 
 export function stableId(...parts: string[]): string {
   return createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 16)
+}
+
+/** Full sha256 hex of SKILL.md text (identity for same-name skill variants). */
+export function skillContentHash(text: string): string {
+  return createHash('sha256').update(text).digest('hex')
 }
 
 export function basename(path: string): string {

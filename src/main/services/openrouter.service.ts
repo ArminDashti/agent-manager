@@ -1,4 +1,7 @@
 import { net } from 'electron'
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { getAppRoot } from '../app-paths'
 import { settingsStore } from './settings-store'
 
 export type OpenRouterRefactorType = 'skill' | 'rule' | 'hook' | 'subAgent'
@@ -21,23 +24,109 @@ export interface OpenRouterRefactorResult {
   model: string
 }
 
-function buildPrompt(resourceType: OpenRouterRefactorType, content: string, userPrompt: string): string {
-  const label = TYPE_LABELS[resourceType]
+function loadInstructionTemplate(): string {
+  try {
+    const path = join(getAppRoot(), 'instructions', 'openrouter.md')
+    if (existsSync(path)) return readFileSync(path, 'utf-8')
+  } catch {
+    // fall through to default
+  }
   return [
-    `You must edit the ${label}:`,
-    content,
+    '# OpenRouter Instruction',
     '',
-    `User prompts for editing the ${label}:`,
-    userPrompt,
+    'Edit ONLY the lines that need to change based on the user request.',
+    'Return a unified diff in the following format:',
     '',
-    'Return only the full edited content. Do not wrap it in markdown code fences. Do not add commentary.'
+    '```',
+    '--- a',
+    '+++ b',
+    '@@ -LINE,COUNT +LINE,COUNT @@',
+    ' context line',
+    '-removed line',
+    '+added line',
+    ' context line',
+    '```',
+    '',
+    'Rules:',
+    '- Return ONLY the unified diff block. No prose, no explanation.',
+    '- Use 3 lines of context before and after each change.',
+    '- Do not rewrite unchanged sections.',
+    '- Preserve indentation and formatting exactly.',
+    '- If the entire file needs replacing, output a full replacement diff.',
   ].join('\n')
 }
 
-function stripCodeFences(text: string): string {
-  const trimmed = text.trim()
-  const match = trimmed.match(/^```(?:[\w+-]*)?\r?\n([\s\S]*?)\r?\n```$/)
-  return match ? match[1].trimEnd() : trimmed
+function buildPrompt(resourceType: OpenRouterRefactorType, content: string, userPrompt: string): string {
+  const label = TYPE_LABELS[resourceType]
+  const instruction = loadInstructionTemplate()
+  return [
+    instruction,
+    '',
+    `## ${label} content to edit:`,
+    '```',
+    content,
+    '```',
+    '',
+    `## User request:`,
+    userPrompt,
+  ].join('\n')
+}
+
+/**
+ * Apply a unified diff to original content.
+ * Returns the patched string, or the original if the diff cannot be applied cleanly.
+ */
+function applyUnifiedDiff(original: string, diffText: string): string {
+  const lines = original.split('\n')
+  const diffLines = diffText.split('\n')
+
+  let result = [...lines]
+  let offset = 0
+
+  const hunkHeaderRe = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/
+
+  let i = 0
+  while (i < diffLines.length) {
+    const line = diffLines[i]
+    const m = hunkHeaderRe.exec(line)
+    if (!m) { i++; continue }
+
+    const origStart = parseInt(m[1], 10) - 1
+    i++
+
+    const hunkOrig: string[] = []
+    const hunkNew: string[] = []
+
+    while (i < diffLines.length && !hunkHeaderRe.test(diffLines[i])) {
+      const dl = diffLines[i]
+      if (dl.startsWith('-')) {
+        hunkOrig.push(dl.slice(1))
+      } else if (dl.startsWith('+')) {
+        hunkNew.push(dl.slice(1))
+      } else {
+        const ctx = dl.startsWith(' ') ? dl.slice(1) : dl
+        hunkOrig.push(ctx)
+        hunkNew.push(ctx)
+      }
+      i++
+    }
+
+    const pos = origStart + offset
+    result.splice(pos, hunkOrig.length, ...hunkNew)
+    offset += hunkNew.length - hunkOrig.length
+  }
+
+  return result.join('\n')
+}
+
+function extractDiffBlock(text: string): string {
+  const fenceMatch = text.match(/```(?:diff|patch)?\n([\s\S]*?)```/)
+  if (fenceMatch) return fenceMatch[1].trimEnd()
+  const hunks = text.split('\n').filter(
+    (l) => l.startsWith('---') || l.startsWith('+++') || l.startsWith('@@') ||
+           l.startsWith('+') || l.startsWith('-') || l.startsWith(' ')
+  )
+  return hunks.length > 3 ? hunks.join('\n') : text.trim()
 }
 
 function postJson(url: string, headers: Record<string, string>, body: unknown): Promise<{
@@ -116,13 +205,19 @@ export async function refactorWithOpenRouter(
     throw new Error('OpenRouter returned invalid JSON')
   }
 
-  const content = parsed.choices?.[0]?.message?.content
-  if (!content?.trim()) {
+  const rawContent = parsed.choices?.[0]?.message?.content
+  if (!rawContent?.trim()) {
     throw new Error('OpenRouter returned an empty response')
   }
 
+  const diffBlock = extractDiffBlock(rawContent)
+  const hasDiffMarkers = diffBlock.includes('@@') && (diffBlock.includes('---') || diffBlock.includes('+++'))
+  const patchedContent = hasDiffMarkers
+    ? applyUnifiedDiff(request.content, diffBlock)
+    : rawContent.trim()
+
   return {
-    content: stripCodeFences(content),
+    content: patchedContent,
     model
   }
 }

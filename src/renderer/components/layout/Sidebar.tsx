@@ -11,11 +11,14 @@ import {
   Settings2,
   CircleHelp,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  BookOpen,
+  RefreshCw
 } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { CollapsibleNavGroup } from './CollapsibleNavGroup'
 import type { PageId } from '@renderer/stores/appStore'
+import { useAppStore } from '@renderer/stores/appStore'
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
 
@@ -37,6 +40,7 @@ const resourceNav: NavItem[] = [
 const otherNav: NavItem[] = [
   { id: 'hub', label: 'Hub', icon: Download },
   { id: 'settings', label: 'Settings', icon: Settings2 },
+  { id: 'instructions', label: 'Instructions', icon: BookOpen },
   { id: 'about', label: 'About', icon: CircleHelp }
 ]
 
@@ -158,6 +162,19 @@ export function useSidebarCollapsed(): [boolean, () => void] {
 
 export function Sidebar({ page, onNavigate, collapsed, onToggleCollapse }: SidebarProps) {
 
+  const { refreshScan, loadSettings } = useAppStore()
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleDeepRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await loadSettings()
+      await refreshScan()
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   return (
 
     <aside
@@ -237,6 +254,34 @@ export function Sidebar({ page, onNavigate, collapsed, onToggleCollapse }: Sideb
             />
 
           ))}
+
+          <button
+
+            type="button"
+
+            title="Deep refresh – reload all skills, hooks, rules, settings"
+
+            onClick={() => void handleDeepRefresh()}
+
+            disabled={refreshing}
+
+            className={cn(
+
+              'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors',
+
+              collapsed && 'justify-center px-2',
+
+              'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40'
+
+            )}
+
+          >
+
+            <RefreshCw size={16} strokeWidth={1.75} className={cn('shrink-0', refreshing && 'animate-spin')} />
+
+            {!collapsed && <span className="truncate">Refresh all</span>}
+
+          </button>
 
         </CollapsibleNavGroup>
 

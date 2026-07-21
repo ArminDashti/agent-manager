@@ -1,5 +1,5 @@
-# Suggestion: Skill sync across platforms may over-copy
+# Suggestion: Scope skill fan-out by platform
 
-Skill fan-out copies a changed skill folder to every other project/platform path that already has `SKILL.md` for that name. If the same skill exists under both `.cursor/skills` and `.codex/skills` in one project, an edit in Cursor will overwrite the Codex copy (and vice versa). Consider scoping fan-out to the same platform id, or offering a “sync peers” toggle, if multi-platform skill divergence becomes common.
+Fan-out now skips peers whose `SKILL.md` content hash differs, so divergent same-name skills are safe. Clones that share content still sync across all enabled platforms (e.g. `.cursor/skills` and `.codex/skills`). If multi-platform clones should stay independent even when content matches, add a “sync peers” toggle or scope fan-out to the same platform id.
 
 Effort: small.

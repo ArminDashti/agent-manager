@@ -21,6 +21,7 @@ import { HubPage } from '@renderer/pages/HubPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
 
 import { AboutPage } from '@renderer/pages/AboutPage'
+import { InstructionsPage } from '@renderer/pages/InstructionsPage'
 import { MessageModal } from '@renderer/components/MessageModal'
 
 
@@ -102,6 +103,10 @@ export default function App() {
       case 'settings':
 
         return <SettingsPage />
+
+      case 'instructions':
+
+        return <InstructionsPage />
 
       case 'about':
 

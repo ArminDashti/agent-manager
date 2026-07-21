@@ -1,11 +1,16 @@
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
+import { skillContentHash } from '@shared/utils'
 import { getAdapter } from '../platforms'
 import { fileService } from './file.service'
 import { settingsStore } from './settings-store'
 
 const syncingRoots = new Set<string>()
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
+/** Previous hash captured at first change in a debounce window (per skill root). */
+const pendingPreviousHash = new Map<string, string | undefined>()
+/** Last-known SKILL.md hash per skill root (normalized path). */
+const contentHashByRoot = new Map<string, string>()
 let paused = false
 
 function normalizePath(p: string): string {
@@ -20,11 +25,28 @@ function isUnderSyncingRoot(changedPath: string): boolean {
   return false
 }
 
+async function hashSkillRoot(skillRoot: string): Promise<string | null> {
+  const skillMd = join(skillRoot, 'SKILL.md')
+  if (!existsSync(skillMd)) return null
+  const text = await fileService.readText(skillMd)
+  return skillContentHash(text)
+}
+
+/** Seed / refresh hash cache from a scan so fan-out can detect pre-edit clones. */
+export function seedSkillContentHashes(
+  skills: Array<{ rootPath: string; contentHash: string }>
+): void {
+  for (const skill of skills) {
+    contentHashByRoot.set(normalizePath(skill.rootPath), skill.contentHash)
+  }
+}
+
 /** Pause fan-out during in-app rename/delete so mid-move events do not sync ghosts. */
 export function pauseSkillSync(): void {
   paused = true
   for (const timer of pendingTimers.values()) clearTimeout(timer)
   pendingTimers.clear()
+  pendingPreviousHash.clear()
 }
 
 export function resumeSkillSync(): void {
@@ -76,7 +98,12 @@ export function resolveSkillFromPath(
   return null
 }
 
-function collectOtherSkillRoots(skillName: string, sourceRoot: string): string[] {
+/** Peers with the same folder name whose SKILL.md still matches previousHash (clones). */
+async function collectCloneSkillRoots(
+  skillName: string,
+  sourceRoot: string,
+  previousHash: string
+): Promise<string[]> {
   const settings = settingsStore.get()
   const sourceNorm = normalizePath(sourceRoot)
   const destRoots: string[] = []
@@ -92,6 +119,8 @@ function collectOtherSkillRoots(skillName: string, sourceRoot: string): string[]
           const dest = join(skillsDir, skillName)
           if (!existsSync(join(dest, 'SKILL.md'))) continue
           if (normalizePath(dest) === sourceNorm) continue
+          const destHash = await hashSkillRoot(dest)
+          if (destHash !== previousHash) continue
           destRoots.push(dest)
         }
       }
@@ -101,12 +130,34 @@ function collectOtherSkillRoots(skillName: string, sourceRoot: string): string[]
   return destRoots
 }
 
-async function syncSkillFromResolved(skillName: string, sourceRoot: string): Promise<void> {
+async function syncSkillFromResolved(
+  skillName: string,
+  sourceRoot: string,
+  previousHash: string | undefined
+): Promise<void> {
   if (paused) return
   if (!existsSync(join(sourceRoot, 'SKILL.md'))) return
 
-  const destRoots = collectOtherSkillRoots(skillName, sourceRoot)
-  if (destRoots.length === 0) return
+  const sourceNorm = normalizePath(sourceRoot)
+  const newHash = await hashSkillRoot(sourceRoot)
+  if (!newHash) return
+
+  if (!previousHash) {
+    // First sighting: record hash only — avoid wiping unknown divergent peers.
+    contentHashByRoot.set(sourceNorm, newHash)
+    return
+  }
+
+  if (previousHash === newHash) {
+    contentHashByRoot.set(sourceNorm, newHash)
+    return
+  }
+
+  const destRoots = await collectCloneSkillRoots(skillName, sourceRoot, previousHash)
+  if (destRoots.length === 0) {
+    contentHashByRoot.set(sourceNorm, newHash)
+    return
+  }
 
   const norms = destRoots.map((d) => normalizePath(d))
   for (const n of norms) syncingRoots.add(n)
@@ -115,7 +166,9 @@ async function syncSkillFromResolved(skillName: string, sourceRoot: string): Pro
     for (const dest of destRoots) {
       await fileService.removePath(dest)
       await fileService.copyDirectory(sourceRoot, dest)
+      contentHashByRoot.set(normalizePath(dest), newHash)
     }
+    contentHashByRoot.set(sourceNorm, newHash)
   } finally {
     setTimeout(() => {
       for (const n of norms) syncingRoots.delete(n)
@@ -123,7 +176,7 @@ async function syncSkillFromResolved(skillName: string, sourceRoot: string): Pro
   }
 }
 
-/** Debounced fan-out: copy the changed skill folder to every other project that already has it. */
+/** Debounced fan-out: copy changed skill only to same-name peers that still match the previous hash. */
 export function scheduleSkillSyncFromPath(changedPath: string): void {
   if (paused) return
   if (isUnderSyncingRoot(changedPath)) return
@@ -132,6 +185,11 @@ export function scheduleSkillSyncFromPath(changedPath: string): void {
   if (!resolved) return
 
   const key = normalizePath(resolved.sourceRoot)
+  // Keep the first pre-edit hash for this debounce window (ignore mid-window scan updates).
+  if (!pendingPreviousHash.has(key)) {
+    pendingPreviousHash.set(key, contentHashByRoot.get(key))
+  }
+  const previousHash = pendingPreviousHash.get(key)
   const existing = pendingTimers.get(key)
   if (existing) clearTimeout(existing)
 
@@ -139,7 +197,8 @@ export function scheduleSkillSyncFromPath(changedPath: string): void {
     key,
     setTimeout(() => {
       pendingTimers.delete(key)
-      void syncSkillFromResolved(resolved.skillName, resolved.sourceRoot)
+      pendingPreviousHash.delete(key)
+      void syncSkillFromResolved(resolved.skillName, resolved.sourceRoot, previousHash)
     }, 800)
   )
 }

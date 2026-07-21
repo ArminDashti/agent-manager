@@ -16,7 +16,7 @@ import type {
 import { CURSOR_ONLY_RESOURCES } from '@shared/types'
 import { ruleBaseName, ruleDisplayName, ruleMatchesDisplayName } from '@shared/rule-names'
 import { isValidResourceName } from '@shared/resource-names'
-import { parseFrontmatter, defaultCategoryFromName } from '@shared/utils'
+import { parseFrontmatter, defaultCategoryFromName, parseSkillGroupKey, skillContentHash, skillFolderNameFromKey, skillGroupKey } from '@shared/utils'
 import { fileService, type TrashResourceKind } from './file.service'
 import { assignmentService } from './assignment.service'
 import { scannerService } from './scanner.service'
@@ -95,6 +95,10 @@ function groupKey(item: ScannedResource, resourceType: ResourceType): string {
   if (resourceType === 'rule') {
     return ruleDisplayName((item as RuleResource).name)
   }
+  if (resourceType === 'skill') {
+    const skill = item as SkillResource
+    return skillGroupKey(skill.name, skill.contentHash)
+  }
   return item.name
 }
 
@@ -105,6 +109,14 @@ function matchesResourceName(
 ): boolean {
   if (resourceType === 'rule') {
     return ruleMatchesDisplayName((item as RuleResource).name, resourceName)
+  }
+  if (resourceType === 'skill') {
+    const skill = item as SkillResource
+    const parsed = parseSkillGroupKey(resourceName)
+    if (parsed) {
+      return skill.name === parsed.name && skill.contentHash === parsed.contentHash
+    }
+    return skill.name === resourceName
   }
   return item.name === resourceName
 }
@@ -301,8 +313,9 @@ export class ResourceService {
     const summaries: ResourceGroupSummary[] = []
     const categoriesToPersist: Record<string, string> = {}
 
-    for (const [name, instances] of grouped) {
+    for (const [key, instances] of grouped) {
       const canonical = pickCanonical(instances)
+      const displayName = canonical.name
       const [tokens, description, ...mtimes] = await Promise.all([
         estimateTokens(canonical, resourceType),
         resourceType === 'skill' || resourceType === 'rule' || resourceType === 'subAgent'
@@ -315,23 +328,33 @@ export class ResourceService {
         .sort()
         .pop() ?? null
 
-      let category = categoryMap[name] ?? ''
+      let category = ''
+      if (resourceType === 'skill' || resourceType === 'rule') {
+        const catMap = categoryMap as Record<string, string>
+        category = catMap[key] ?? catMap[displayName] ?? ''
+      }
       if (resourceType === 'skill' && !category.trim()) {
-        const derived = defaultCategoryFromName(name)
+        const derived = defaultCategoryFromName(displayName)
         if (derived) {
           category = derived
-          categoriesToPersist[name] = derived
+          categoriesToPersist[displayName] = derived
         }
       }
 
+      const mandatoryRecord = mandatoryMap as Record<string, boolean>
+      const mandatory = mandatoryRecord[key] ?? mandatoryRecord[displayName] ?? false
+
       summaries.push({
-        name,
+        name: displayName,
+        groupKey: key,
+        contentHash:
+          resourceType === 'skill' ? (canonical as SkillResource).contentHash : undefined,
         usedProjectCount: countProjectsUsing(instances),
         totalProjectCount: totalProjects,
         assignedProjectIds: collectAssignedProjectIds(instances),
         tokenEstimate: tokens,
         lastUpdatedAt,
-        mandatory: mandatoryMap[name] ?? false,
+        mandatory,
         canonicalId: canonical.id,
         description,
         category,
@@ -425,7 +448,9 @@ export class ResourceService {
 
     for (const projectId of previousAssigned) {
       if (!nextAssigned.has(projectId)) {
-        await assignmentService.unassignFromProject(resourceName, resourceType, projectId)
+        const diskName =
+          resourceType === 'skill' ? skillFolderNameFromKey(resourceName) : resourceName
+        await assignmentService.unassignFromProject(diskName, resourceType, projectId)
       }
     }
   }
@@ -494,7 +519,7 @@ export class ResourceService {
         }
         if (seen.has(path)) continue
         seen.add(path)
-        await fileService.moveToTrash(path, kind, resourceName, {
+        await fileService.moveToTrash(path, kind, skillFolderNameFromKey(resourceName), {
           resourceType,
           sourceType: item.source.type,
           sourceId: item.source.id
@@ -509,9 +534,15 @@ export class ResourceService {
         }
         const nextMandatory = { ...(s.mandatoryForAllProjects?.[MANDATORY_KEY[resourceType]] ?? {}) }
         delete nextMandatory[resourceName]
+        if (resourceType === 'skill') {
+          delete nextMandatory[skillFolderNameFromKey(resourceName)]
+        }
 
         if (resourceType === 'skill' || resourceType === 'rule') {
           categoriesStore.removeCategory(resourceType, resourceName)
+          if (resourceType === 'skill') {
+            categoriesStore.removeCategory(resourceType, skillFolderNameFromKey(resourceName))
+          }
         }
 
         return {
@@ -703,11 +734,19 @@ export class ResourceService {
     if (!isValidResourceName(trimmed)) {
       throw new Error('Invalid resource name')
     }
-    if (trimmed === oldName) return
+
+    const skillParsed = resourceType === 'skill' ? parseSkillGroupKey(oldName) : null
+    const folderOld = skillParsed?.name ?? oldName
+    const targetContentHash = skillParsed?.contentHash
+    if (trimmed === folderOld) return
 
     const items = filterItems(getItems(scan, resourceType), resourceType)
     const existing = groupByName(items, resourceType)
-    if (existing.has(trimmed)) {
+    if (resourceType === 'skill') {
+      if (items.some((i) => i.name === trimmed)) {
+        throw new Error(`A resource named "${trimmed}" already exists`)
+      }
+    } else if (existing.has(trimmed)) {
       throw new Error(`A resource named "${trimmed}" already exists`)
     }
 
@@ -726,13 +765,19 @@ export class ResourceService {
         switch (resourceType) {
           case 'skill':
             for (const skillsDir of paths.skillsDirs) {
-              const oldRoot = join(skillsDir, oldName)
+              const oldRoot = join(skillsDir, folderOld)
               if (!existsSync(oldRoot)) continue
+              if (targetContentHash) {
+                const skillMd = join(oldRoot, 'SKILL.md')
+                if (!existsSync(skillMd)) continue
+                const text = await fileService.readText(skillMd)
+                if (skillContentHash(text) !== targetContentHash) continue
+              }
               await this.renameSkillAtRoot(oldRoot, trimmed, seen)
             }
             break
           case 'rule': {
-            const base = ruleBaseName(oldName)
+            const base = ruleBaseName(folderOld)
             for (const ext of ['.mdc', '.md'] as const) {
               const oldPath = join(paths.rulesDir, `${base}${ext}`)
               if (!existsSync(oldPath)) continue
@@ -742,14 +787,14 @@ export class ResourceService {
           }
           case 'subAgent': {
             if (!paths.agentsDir) break
-            const oldPath = join(paths.agentsDir, `${oldName}.md`)
+            const oldPath = join(paths.agentsDir, `${folderOld}.md`)
             if (!existsSync(oldPath)) continue
             await this.renameSubAgentAtPath(oldPath, trimmed, seen)
             break
           }
           case 'hook': {
             if (!paths.hooksConfigPath || !existsSync(paths.hooksConfigPath)) break
-            await this.renameHookInConfig(paths, oldName, trimmed, seen)
+            await this.renameHookInConfig(paths, folderOld, trimmed, seen)
             break
           }
         }
@@ -766,7 +811,7 @@ export class ResourceService {
             await this.renameRuleAtPath((item as RuleResource).filePath, trimmed, seen)
             break
           case 'hook':
-            await this.renameHookInstance(item as HookResource, oldName, trimmed, seen)
+            await this.renameHookInstance(item as HookResource, folderOld, trimmed, seen)
             break
           case 'subAgent':
             await this.renameSubAgentAtPath((item as SubAgentResource).filePath, trimmed, seen)
@@ -775,10 +820,16 @@ export class ResourceService {
       }
 
       if (seen.size === 0) {
-        throw new Error(`Resource not found: ${oldName}`)
+        throw new Error(`Resource not found: ${folderOld}`)
       }
 
-      this.migrateSettingsKeys(resourceType, oldName, trimmed)
+      if (skillParsed) {
+        const newGroupKey = skillGroupKey(trimmed, skillParsed.contentHash)
+        this.migrateSettingsKeys(resourceType, oldName, newGroupKey)
+        this.migrateSettingsKeys(resourceType, folderOld, trimmed)
+      } else {
+        this.migrateSettingsKeys(resourceType, oldName, trimmed)
+      }
     })
   }
 

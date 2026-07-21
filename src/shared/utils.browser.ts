@@ -114,3 +114,22 @@ export function isValidGithubUrl(url: string): boolean {
     return false
   }
 }
+
+export function skillGroupKey(name: string, contentHash: string): string {
+  return `${name}::${contentHash}`
+}
+
+/** Parse `name::contentHash` group keys; returns null for bare folder names. */
+export function parseSkillGroupKey(
+  key: string
+): { name: string; contentHash: string } | null {
+  const sep = key.lastIndexOf('::')
+  if (sep <= 0) return null
+  const contentHash = key.slice(sep + 2).toLowerCase()
+  if (!/^[a-f0-9]{64}$/.test(contentHash)) return null
+  return { name: key.slice(0, sep), contentHash }
+}
+
+export function skillFolderNameFromKey(key: string): string {
+  return parseSkillGroupKey(key)?.name ?? key
+}

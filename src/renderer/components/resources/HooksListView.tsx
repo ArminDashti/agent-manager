@@ -88,7 +88,7 @@ function buildHookColumns(
             type="button"
             onClick={(e) => {
               stopProp(e)
-              onAssign(row.name)
+              onAssign(row.groupKey || row.name)
             }}
             className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"
             title="Install"
@@ -99,7 +99,7 @@ function buildHookColumns(
             type="button"
             onClick={(e) => {
               stopProp(e)
-              onRefactor(row.name)
+              onRefactor(row.groupKey || row.name)
             }}
             className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"
             title="Refactor by OpenRouter"
@@ -110,7 +110,7 @@ function buildHookColumns(
             type="button"
             onClick={(e) => {
               stopProp(e)
-              void onDelete(row.name)
+              void onDelete(row.groupKey || row.name)
             }}
             className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-red-400"
             title="Delete"
@@ -232,11 +232,11 @@ export function HooksListView({
               <ResourceTable
                 columns={columns}
                 rows={rows}
-                rowKey={(r) => r.name}
+                rowKey={(r) => r.groupKey || r.name}
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleSort}
-                onRowClick={(row) => onEdit(row.name)}
+                onRowClick={(row) => onEdit(row.groupKey || row.name)}
               />
             </section>
           ))}

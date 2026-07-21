@@ -170,7 +170,7 @@ export function ResourceEditView({ resourceType, resourceName, onBack }: Resourc
   return (
     <div className="flex flex-col h-full">
       <ResourceSubViewHeader
-        title={`Edit: ${resourceName}`}
+        title={`Edit: ${resource.name}`}
         onBack={onBack}
         actions={
           refactorable ? (
@@ -198,18 +198,18 @@ export function ResourceEditView({ resourceType, resourceName, onBack }: Resourc
             }
             right={
               selectedFile ? (
-                <EditorPane filePath={selectedFile} content={content} onChange={setContent} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
-                  Select a file
-                </div>
-              )
+              <EditorPane filePath={selectedFile} content={content} onChange={setContent} resourceType={resourceType} resourceName={resourceName} />
+            ) : (
+              <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
+                Select a file
+              </div>
+            )
             }
           />
         ) : (
           <div className="h-full p-2">
             {selectedFile && (
-              <EditorPane filePath={selectedFile} content={content} onChange={setContent} />
+              <EditorPane filePath={selectedFile} content={content} onChange={setContent} resourceType={resourceType} resourceName={resourceName} />
             )}
           </div>
         )}
@@ -233,13 +233,18 @@ export function ResourceEditView({ resourceType, resourceName, onBack }: Resourc
 function EditorPane({
   filePath,
   content,
-  onChange
+  onChange,
+  resourceType,
+  resourceName
 }: {
   filePath: string
   content: string
   onChange: (v: string) => void
+  resourceType?: ListableResourceType
+  resourceName?: string
 }) {
   const isMd = isMarkdownFile(filePath) || filePath.endsWith('.py')
+  const isSkillMd = resourceType === 'skill' && fileBaseName(filePath) === 'SKILL.md'
   if (isMd) {
     return (
       <MarkdownEditor
@@ -248,7 +253,11 @@ function EditorPane({
         onChange={onChange}
         onSave={async (v) => {
           if (!(await confirmSave(filePath))) return
-          await window.agentManager.writeFile(filePath, v)
+          if (isSkillMd && resourceName) {
+            await window.agentManager.writeSkillMd(filePath, v, resourceName)
+          } else {
+            await window.agentManager.writeFile(filePath, v)
+          }
         }}
       />
     )

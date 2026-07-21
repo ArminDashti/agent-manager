@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowDownToLine, Wand2, Trash } from 'lucide-react'
+import { ArrowLeft, ArrowDownToLine, Trash } from 'lucide-react'
 import type { ResourceGroupSummary, ResourceType, UiFilterState } from '@shared/types'
 import { formatDateWithRelative } from '@shared/utils.browser'
 import { ResourceTable } from './ResourceTable'
 import { ResourceListToolbar } from './ResourceListToolbar'
-import { OpenRouterRefactorModal } from './OpenRouterRefactorModal'
+import { ResourceDirTree } from './ResourceDirTree'
 import { ALL_PROJECTS_KEY } from './ProjectFilterDropdown'
 import { UNCATEGORIZED_KEY } from './CategoryFilterDropdown'
 import { showMessage } from '@renderer/stores/messageStore'
@@ -48,6 +48,14 @@ function isRenamable(
   return isEnhancedGrid(resourceType)
 }
 
+function resourceOpKey(row: ResourceGroupSummary): string {
+  return row.groupKey || row.name
+}
+
+function shortContentHash(hash: string | undefined): string {
+  return hash ? hash.slice(0, 6) : ''
+}
+
 export function ResourceListView({
   title,
   subtitle,
@@ -62,7 +70,6 @@ export function ResourceListView({
   const { settings } = useAppStore()
   const [summaries, setSummaries] = useState<ResourceGroupSummary[]>([])
   const [loading, setLoading] = useState(true)
-  const [refactorTarget, setRefactorTarget] = useState<string | null>(null)
   const summariesRef = useRef(summaries)
   summariesRef.current = summaries
 
@@ -73,10 +80,16 @@ export function ResourceListView({
     [selectedCategories]
   )
 
+  const [selectedDirPath, setSelectedDirPath] = useState<string | null>(null)
+
   const enhanced = isEnhancedGrid(resourceType)
   const showCategory = hasCategoryColumn(resourceType)
   const renamable = isRenamable(resourceType)
-  const refactorable = isEnhancedGrid(resourceType)
+
+  const hasNestedDirs = useMemo(
+    () => summaries.some((s) => s.name.includes('/')),
+    [summaries]
+  )
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     const soft = opts?.soft === true && summariesRef.current.length > 0
@@ -115,6 +128,9 @@ export function ResourceListView({
 
   const filtered = useMemo(() => {
     let rows = summaries
+    if (selectedDirPath) {
+      rows = rows.filter((r) => r.name.startsWith(selectedDirPath + '/'))
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       rows = rows.filter((r) => {
@@ -161,6 +177,7 @@ export function ResourceListView({
   }, [
     summaries,
     search,
+    selectedDirPath,
     projectUsageFilter,
     selectedCategorySet,
     selectedProjectId,
@@ -179,17 +196,17 @@ export function ResourceListView({
     }
   }
 
-  const handleCategoryChange = async (name: string, category: string) => {
+  const handleCategoryChange = async (opKey: string, category: string) => {
     if (!showCategory) return
-    await window.agentManager.setResourceCategory(resourceType, name, category)
+    await window.agentManager.setResourceCategory(resourceType, opKey, category)
     await load()
     onRefresh?.()
   }
 
-  const handleRename = async (oldName: string, newName: string) => {
+  const handleRename = async (opKey: string, newName: string) => {
     if (!renamable) return
     try {
-      await window.agentManager.renameResource(resourceType, oldName, newName)
+      await window.agentManager.renameResource(resourceType, opKey, newName)
       await load()
       onRefresh?.()
     } catch (e) {
@@ -200,20 +217,33 @@ export function ResourceListView({
     }
   }
 
-  const handleDelete = async (name: string) => {
+  const handleDelete = async (row: ResourceGroupSummary) => {
+    const opKey = resourceOpKey(row)
     const confirmed = await showMessage({
-      message: `Delete "${name}" from all locations? Items are kept under .trash.`,
+      message: `Delete "${row.name}" from all locations? Items are kept under .trash.`,
       confirm: true,
       type: 'error',
       title: 'Delete resource'
     })
     if (!confirmed) return
-    await window.agentManager.deleteResource(resourceType, name)
+    await window.agentManager.deleteResource(resourceType, opKey)
     await load()
     onRefresh?.()
   }
 
   const stopProp = (e: React.MouseEvent) => e.stopPropagation()
+
+  const duplicateNames = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of summaries) {
+      counts.set(row.name, (counts.get(row.name) ?? 0) + 1)
+    }
+    const dupes = new Set<string>()
+    for (const [name, count] of counts) {
+      if (count > 1) dupes.add(name)
+    }
+    return dupes
+  }, [summaries])
 
   const actionsColumn = {
     key: 'actions',
@@ -225,31 +255,18 @@ export function ResourceListView({
           type="button"
           onClick={(e) => {
             stopProp(e)
-            onAssign(row.name)
+            onAssign(resourceOpKey(row))
           }}
           className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"
           title="Install"
         >
           <ArrowDownToLine size={15} strokeWidth={1.75} />
         </button>
-        {refactorable && (
-          <button
-            type="button"
-            onClick={(e) => {
-              stopProp(e)
-              setRefactorTarget(row.name)
-            }}
-            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200"
-            title="Refactor by OpenRouter"
-          >
-            <Wand2 size={15} strokeWidth={1.75} />
-          </button>
-        )}
         <button
           type="button"
           onClick={(e) => {
             stopProp(e)
-            void handleDelete(row.name)
+            void handleDelete(row)
           }}
           className="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-red-400"
           title="Delete"
@@ -269,12 +286,12 @@ export function ResourceListView({
       <input
         type="text"
         defaultValue={row.category}
-        key={`${row.name}-${row.category}`}
+        key={`${resourceOpKey(row)}-${row.category}`}
         placeholder="—"
         onClick={stopProp}
         onBlur={(e) => {
           if (e.target.value.trim() !== row.category) {
-            void handleCategoryChange(row.name, e.target.value)
+            void handleCategoryChange(resourceOpKey(row), e.target.value)
           }
         }}
         onKeyDown={(e) => {
@@ -292,25 +309,41 @@ export function ResourceListView({
     label: 'Name',
     sortable: true,
     className: 'min-w-[16rem] w-[22rem]',
-    render: (row: ResourceGroupSummary) =>
-      renamable ? (
-        <input
-          type="text"
-          defaultValue={row.name}
-          key={`${row.name}-resource-name`}
-          onClick={stopProp}
-          onBlur={(e) => {
-            const next = e.target.value.trim()
-            if (next && next !== row.name) void handleRename(row.name, next)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
-          }}
-          className="w-full min-w-[14rem] bg-transparent border border-transparent hover:border-zinc-700 focus:border-zinc-600 rounded px-1 py-0.5 text-sm font-medium text-zinc-200"
-        />
+    render: (row: ResourceGroupSummary) => {
+      const showHash =
+        resourceType === 'skill' && duplicateNames.has(row.name) && row.contentHash
+      const hashLabel = shortContentHash(row.contentHash)
+      return renamable ? (
+        <div className="flex items-center gap-2 min-w-[14rem]">
+          <input
+            type="text"
+            defaultValue={row.name}
+            key={`${resourceOpKey(row)}-resource-name`}
+            onClick={stopProp}
+            onBlur={(e) => {
+              const next = e.target.value.trim()
+              if (next && next !== row.name) void handleRename(resourceOpKey(row), next)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+            }}
+            className="flex-1 min-w-0 bg-transparent border border-transparent hover:border-zinc-700 focus:border-zinc-600 rounded px-1 py-0.5 text-sm font-medium text-zinc-200"
+          />
+          {showHash && (
+            <span className="shrink-0 text-[10px] font-mono text-zinc-500" title={row.contentHash}>
+              {hashLabel}
+            </span>
+          )}
+        </div>
       ) : (
-        <span className="font-medium text-zinc-200">{row.name}</span>
+        <span className="font-medium text-zinc-200">
+          {row.name}
+          {showHash ? (
+            <span className="ml-2 text-[10px] font-mono text-zinc-500">{hashLabel}</span>
+          ) : null}
+        </span>
       )
+    }
   }
 
   const enhancedBaseColumns = [
@@ -406,26 +439,28 @@ export function ResourceListView({
         selectedProjectId={selectedProjectId}
         onProjectFilterChange={(value) => onFilterChange({ selectedProjectId: value })}
       />
-      {loading && summaries.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">Loading…</div>
-      ) : (
-        <ResourceTable
-          columns={columns}
-          rows={filtered}
-          rowKey={(r) => r.name}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={handleSort}
-          onRowClick={enhanced ? (row) => onEdit(row.name) : undefined}
-        />
-      )}
-      {refactorTarget && refactorable && (
-        <OpenRouterRefactorModal
-          resourceType={resourceType}
-          resourceName={refactorTarget}
-          onClose={() => setRefactorTarget(null)}
-        />
-      )}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {hasNestedDirs && (
+          <ResourceDirTree
+            names={summaries.map((s) => s.name)}
+            selectedPath={selectedDirPath}
+            onSelect={setSelectedDirPath}
+          />
+        )}
+        {loading && summaries.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">Loading…</div>
+        ) : (
+          <ResourceTable
+            columns={columns}
+            rows={filtered}
+            rowKey={(r) => r.groupKey || r.name}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={handleSort}
+            onRowClick={enhanced ? (row) => onEdit(resourceOpKey(row)) : undefined}
+          />
+        )}
+      </div>
     </div>
   )
 }

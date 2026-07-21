@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Download, RefreshCw } from 'lucide-react'
 import { MarkdownEditor } from '@renderer/components/MarkdownEditor'
-import { TwoPanelLayout } from '@renderer/components/layout/TwoPanelLayout'
 import { useAppStore } from '@renderer/stores/appStore'
 import { showMessage } from '@renderer/stores/messageStore'
 import type { HubCatalogItem, HubResourceType } from '@shared/types'
@@ -24,6 +23,7 @@ export function HubPage() {
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<HubCatalogItem | null>(null)
   const [preview, setPreview] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [installItem, setInstallItem] = useState<HubCatalogItem | null>(null)
   const [installProjectIds, setInstallProjectIds] = useState<Set<string>>(new Set())
@@ -39,10 +39,7 @@ export function HubPage() {
         const cached = await window.agentManager.hubList()
         setHubItems(cached)
         if (cached.length > 0) {
-          await showMessage({
-            message: `${msg} — showing cached catalog`,
-            type: 'error'
-          })
+          await showMessage({ message: `${msg} — showing cached catalog`, type: 'error' })
         }
       } catch {
         setHubItems([])
@@ -67,11 +64,10 @@ export function HubPage() {
 
   const previewItem = async (item: HubCatalogItem) => {
     setSelected(item)
-    setLoading(true)
+    setPreviewLoading(true)
     try {
       const cacheDir = await window.agentManager.hubFetchResource(item.type, item.name)
-      const folder = HUB_TYPE_FOLDERS[item.type]
-      void folder
+      void HUB_TYPE_FOLDERS[item.type]
       const tryFiles =
         item.type === 'skill'
           ? ['SKILL.md']
@@ -93,7 +89,7 @@ export function HubPage() {
       }
       setPreview('(No preview file found)')
     } finally {
-      setLoading(false)
+      setPreviewLoading(false)
     }
   }
 
@@ -135,11 +131,46 @@ export function HubPage() {
     const cursor = settings?.platforms.find((p) => p.id === 'cursor')
     if (!cursor) return
     const dest =
-      item.type === 'mcp'
-        ? `${cursor.rootPath}`
-        : `${cursor.rootPath}/tools`
+      item.type === 'mcp' ? `${cursor.rootPath}` : `${cursor.rootPath}/tools`
     await window.agentManager.hubInstall(item.type, item.name, dest)
     await refreshScan()
+  }
+
+  if (selected) {
+    return (
+      <div className="flex flex-col h-full">
+        <header className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
+          <button
+            type="button"
+            onClick={() => setSelected(null)}
+            className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400"
+            aria-label="Back to list"
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-medium truncate">{selected.name}</h2>
+            <p className="text-xs text-zinc-500 capitalize">{selected.type}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void legacyInstallItem(selected)}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded"
+          >
+            <Download size={14} /> Install
+          </button>
+        </header>
+        <div className="flex-1 min-h-0 p-2">
+          {previewLoading ? (
+            <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
+              Loading preview…
+            </div>
+          ) : (
+            <MarkdownEditor filePath={selected.fetchUrl} value={preview} readOnly />
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -167,7 +198,9 @@ export function HubPage() {
               setTab(t.id)
               setHubFilter(t.id === 'all' ? null : t.id)
             }}
-            className={`px-3 py-2 text-sm ${tab === t.id ? 'border-b-2 border-blue-500 text-blue-400' : 'text-zinc-500'}`}
+            className={`px-3 py-2 text-sm ${
+              tab === t.id ? 'border-b-2 border-blue-500 text-blue-400' : 'text-zinc-500'
+            }`}
           >
             {t.label}
           </button>
@@ -180,46 +213,37 @@ export function HubPage() {
         />
       </div>
 
-      <TwoPanelLayout
-        autoSaveId="hub-panels"
-        defaultLeftSize={32}
-        left={
-          <div>
-            {filtered.length === 0 && !loading && (
-              <p className="p-4 text-sm text-zinc-500">
-                Hub not available — check back after GitHub Pages is live
-              </p>
-            )}
-            {filtered.map((item) => (
-              <div
-                key={item.id}
-                className={`px-3 py-2 border-b border-zinc-900 ${selected?.id === item.id ? 'bg-zinc-800' : ''}`}
+      <div className="flex-1 overflow-auto">
+        {filtered.length === 0 && !loading ? (
+          <p className="p-4 text-sm text-zinc-500">
+            Hub not available — check back after GitHub Pages is live
+          </p>
+        ) : (
+          filtered.map((item) => (
+            <div
+              key={item.id}
+              className="px-4 py-3 border-b border-zinc-900 hover:bg-zinc-900/50 transition-colors"
+            >
+              <button
+                type="button"
+                className="w-full text-left"
+                onClick={() => void previewItem(item)}
               >
-                <button type="button" className="w-full text-left" onClick={() => void previewItem(item)}>
-                  <div className="font-medium text-sm">{item.name}</div>
-                  <div className="text-xs text-zinc-500 capitalize">{item.type}</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void legacyInstallItem(item)}
-                  className="mt-1 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
-                >
-                  <Download size={12} /> Install
-                </button>
-              </div>
-            ))}
-          </div>
-        }
-        right={
-          selected ? (
-            <div className="h-full p-2 min-w-0">
-              <MarkdownEditor filePath={selected.fetchUrl} value={preview} readOnly />
+                <div className="font-medium text-sm text-zinc-200">{item.name}</div>
+                <div className="text-xs text-zinc-500 capitalize mt-0.5">{item.type}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => void legacyInstallItem(item)}
+                className="mt-1 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+              >
+                <Download size={12} /> Install
+              </button>
             </div>
-          ) : (
-            <div className="h-full flex items-center justify-center text-zinc-500">Select a hub item to preview</div>
-          )
-        }
-      />
+          ))
+        )}
+      </div>
+
       {installItem && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
           <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-[440px]">
@@ -227,7 +251,10 @@ export function HubPage() {
             <p className="text-xs text-zinc-500 mb-3">Select target projects (.cursor)</p>
             <div className="max-h-48 overflow-auto border border-zinc-800 rounded mb-4">
               {projects.map((p) => (
-                <label key={p.id} className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800 text-sm">
+                <label
+                  key={p.id}
+                  className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800 text-sm"
+                >
                   <input
                     type="checkbox"
                     checked={installProjectIds.has(p.id)}

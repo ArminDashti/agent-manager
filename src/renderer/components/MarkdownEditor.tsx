@@ -29,7 +29,14 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced
 }
 
+function stripFrontmatter(content: string): string {
+  // Handle both LF and CRLF; match the closing --- on its own line
+  const match = content.match(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/)
+  return match ? content.slice(match[0].length) : content
+}
+
 function MarkdownPreview({ content }: { content: string }) {
+  const rendered = stripFrontmatter(content)
   return (
     <div className="markdown-preview h-full overflow-auto max-w-full min-w-0">
       <div className="markdown-prose max-w-3xl mx-auto break-words">
@@ -59,7 +66,7 @@ function MarkdownPreview({ content }: { content: string }) {
             }
           }}
         >
-          {content}
+          {rendered}
         </ReactMarkdown>
       </div>
     </div>

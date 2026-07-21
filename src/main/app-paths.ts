@@ -2,6 +2,32 @@ import { app } from 'electron'
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
+const DEFAULT_OPENROUTER_INSTRUCTION = `# OpenRouter Instruction
+
+You are an expert editor for AI agent resource files (Skills, Rules, Hooks, Sub-agents).
+
+## Task
+Edit ONLY the lines that need to change based on the user's request.
+Return a unified diff of your changes in the following format:
+
+\`\`\`
+--- a
++++ b
+@@ -LINE,COUNT +LINE,COUNT @@
+ context line
+-removed line
++added line
+ context line
+\`\`\`
+
+## Rules
+- Return ONLY the unified diff block. No prose, no explanation.
+- Keep context lines (3 lines before/after each change) to help locate the edit.
+- Do not rewrite unchanged sections.
+- Preserve indentation and formatting exactly.
+- If the entire file must be replaced, output a full replacement diff.
+`
+
 let appRoot: string | null = null
 
 export function getAppRoot(): string {
@@ -106,6 +132,15 @@ export function ensurePortableLayout(): void {
     }
   }
 
+  const instructionsDir = join(root, 'instructions')
+  if (!existsSync(instructionsDir)) {
+    mkdirSync(instructionsDir, { recursive: true })
+  }
+  const defaultInstruction = join(instructionsDir, 'openrouter.md')
+  if (!existsSync(defaultInstruction)) {
+    writeFileSync(defaultInstruction, DEFAULT_OPENROUTER_INSTRUCTION, 'utf-8')
+  }
+
   const importedPath = join(root, 'imported-projects.json')
   if (!existsSync(importedPath)) {
     writeFileSync(importedPath, `${JSON.stringify({ projectRoots: [] }, null, 2)}\n`, 'utf-8')
@@ -151,4 +186,8 @@ export function getCategoriesPath(): string {
 
 export function getTrashPath(...segments: string[]): string {
   return resolveFromAppRoot('.trash', ...segments)
+}
+
+export function getInstructionsPath(...segments: string[]): string {
+  return resolveFromAppRoot('instructions', ...segments)
 }

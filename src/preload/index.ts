@@ -101,6 +101,11 @@ export interface AgentManagerApi {
     message: string,
     data?: Record<string, unknown>
   ) => Promise<boolean>
+  writeSkillMd: (filePath: string, content: string, currentResourceName: string) => Promise<boolean>
+  listInstructions: () => Promise<string[]>
+  readInstruction: (name: string) => Promise<string>
+  saveInstruction: (name: string, content: string) => Promise<boolean>
+  createInstruction: (name: string) => Promise<string>
 }
 
 const api: AgentManagerApi = {
@@ -153,7 +158,13 @@ const api: AgentManagerApi = {
   closeWindow: () => ipcRenderer.invoke('window:close'),
   isWindowMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   debugLog: (hypothesisId, location, message, data) =>
-    ipcRenderer.invoke('debug:log', hypothesisId, location, message, data ?? {})
+    ipcRenderer.invoke('debug:log', hypothesisId, location, message, data ?? {}),
+  writeSkillMd: (filePath, content, currentResourceName) =>
+    ipcRenderer.invoke('file:writeSkillMd', filePath, content, currentResourceName),
+  listInstructions: () => ipcRenderer.invoke('instructions:list'),
+  readInstruction: (name) => ipcRenderer.invoke('instructions:read', name),
+  saveInstruction: (name, content) => ipcRenderer.invoke('instructions:save', name, content),
+  createInstruction: (name) => ipcRenderer.invoke('instructions:create', name)
 }
 
 contextBridge.exposeInMainWorld('agentManager', api)
